@@ -1,0 +1,143 @@
+# ui/main_window.py
+
+from PyQt6.QtWidgets import (
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QFrame,
+)
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QPixmap, QImage
+import numpy as np
+import cv2
+
+# Import custom modules
+from video_capture.camera_feed import CameraFeed
+from processing.image_processor import ImageProcessor
+from ui.widgets.histogram_plotter import HistogramPlotter
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        print("MainWindow: Initializing MainWindow UI components...")  # Debug print
+        self.setWindowTitle("PDI Live Studio")
+        self.setGeometry(100, 100, 1200, 800)  # Initial window size
+
+        # --- Central Widget and Layout ---
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+        self.main_layout = QHBoxLayout(self.central_widget)
+
+        # --- Video Display Area ---
+        self.video_display_layout = QVBoxLayout()
+
+        self.video_label = QLabel("Waiting for video stream...")
+        self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.video_label.setFixedSize(640, 480)
+        self.video_label.setFrameShape(QFrame.Shape.Box)
+        self.video_label.setFrameShadow(QFrame.Shadow.Raised)
+        self.video_display_layout.addWidget(self.video_label)
+
+        # --- Histogram Display Area ---
+        self.histogram_widget = HistogramPlotter()
+        self.histogram_widget.setFixedSize(640, 250)
+        self.video_display_layout.addWidget(self.histogram_widget)
+
+        self.main_layout.addLayout(self.video_display_layout)
+
+        # --- Controls Area (Right Panel) ---
+        self.controls_layout = QVBoxLayout()
+        self.controls_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        self.filter_controls_label = QLabel("Filter Controls (Coming Soon!)")
+        self.controls_layout.addWidget(self.filter_controls_label)
+
+        self.pipeline_controls_label = QLabel("Processing Pipeline (Coming Soon!)")
+        self.controls_layout.addWidget(self.pipeline_controls_label)
+
+        self.controls_layout.addStretch(1)
+
+        self.main_layout.addLayout(self.controls_layout)
+
+        # --- Backend Logic Initialization ---
+        print(
+            "MainWindow: Initializing CameraFeed and ImageProcessor..."
+        )  # Debug print
+        self.camera_feed = CameraFeed()
+        self.image_processor = ImageProcessor()
+
+        # --- Connect Signals and Slots ---
+        print(
+            "MainWindow: Connecting signals and starting CameraFeed..."
+        )  # Debug print
+        self.camera_feed.frame_ready.connect(self.update_video_display)
+
+        try:
+            self.camera_feed.start()
+            print(
+                "MainWindow: CameraFeed started successfully (or at least attempted)."
+            )  # Debug print
+        except Exception as e:
+            print(f"MainWindow: ERROR starting CameraFeed: {e}")  # Crucial debug
+            self.video_label.setText(f"ERROR: Could not start camera: {e}")
+
+    def update_video_display(self, frame: np.ndarray):
+        """
+        Receives a raw frame from the camera feed, processes it,
+        and updates the video display and histogram.
+        """
+        # print("MainWindow: Received frame for display.") # Debug, but can be too verbose
+        if frame is None:
+            # print("MainWindow: Received None frame.") # Debug
+            return
+
+        # Process the frame through the image processor's pipeline
+        processed_frame = self.image_processor.process_frame(frame)
+
+        # --- Convert processed frame (NumPy array) to QImage for PyQt display ---
+        h, w = processed_frame.shape[:2]  # Get height and width
+
+        if len(processed_frame.shape) == 3:  # Color image (BGR)
+            # Convert BGR to RGB for PyQt display
+            rgb_image = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
+            bytes_per_line = rgb_image.shape[2] * w  # 3 channels * width (for RGB)
+            # CORRECTED: Use Format_RGB32 for PyQt6 when converting from 24-bit RGB
+            q_image = QImage(
+                rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888
+            )
+        else:  # Grayscale image (2D array)
+            bytes_per_line = w  # 1 channel * width
+            q_image = QImage(
+                processed_frame.data,
+                w,
+                h,
+                bytes_per_line,
+                QImage.Format.Format_Grayscale8,
+            )
+
+        # Scale QImage to fit QLabel size
+        pixmap = QPixmap.fromImage(q_image).scaled(
+            self.video_label.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.video_label.setPixmap(pixmap)
+
+        # Update the histogram display for the *original* grayscale frame
+        gray_frame_for_hist = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        hist_data = self.image_processor.get_histogram_data(gray_frame_for_hist)
+        self.histogram_widget.update_plot(hist_data)
+
+    def closeEvent(self, event):
+        """
+        Handles the window close event to ensure the camera feed thread is stopped cleanly.
+        """
+        print("MainWindow: closeEvent triggered. Stopping CameraFeed...")  # Debug print
+        if self.camera_feed.isRunning():
+            self.camera_feed.stop()
+            self.camera_feed.wait()
+        print("MainWindow: Application closed gracefully.")  # Debug print
+        event.accept()

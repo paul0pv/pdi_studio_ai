@@ -1,0 +1,232 @@
+/* styles/dark_theme.qss */
+
+/* General Window and Background */
+QMainWindow {
+    background-color: #2e2e2e;
+    color: #e0e0e0;
+}
+
+QWidget {
+    background-color: #2e2e2e;
+    color: #e0e0e0;
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+    font-size: 14px;
+}
+
+/* GroupBox - for FilterSelector, PipelineManager, FilterControl */
+QGroupBox {
+    background-color: #3c3c3c;
+    border: 1px solid #505050;
+    border-radius: 5px;
+    margin-top: 2ex; /* Space for the title */
+    color: #e0e0e0;
+    font-weight: bold;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left; /* Position at top left */
+    padding: 0 3px;
+    background-color: #3c3c3c; /* Match groupbox background */
+    border-radius: 3px;
+    color: #a0a0a0; /* Slightly lighter for title */
+}
+
+
+/* Labels */
+QLabel {
+    color: #e0e0e0;
+}
+
+/* LineEdits (for LLM prompt, preset names) */
+QLineEdit {
+    background-color: #4a4a4a;
+    border: 1px solid #606060;
+    border-radius: 3px;
+    padding: 5px;
+    color: #e0e0e0;
+    selection-background-color: #5d9ddc; /* Blue selection */
+}
+
+/* Buttons */
+QPushButton {
+    background-color: #555555;
+    color: #ffffff;
+    border: 1px solid #666666;
+    border-radius: 4px;
+    padding: 8px 15px;
+    min-width: 80px;
+    outline: none; /* Remove focus outline */
+}
+
+QPushButton:hover {
+    background-color: #6a6a6a;
+    border: 1px solid #777777;
+}
+
+QPushButton:pressed {
+    background-color: #404040;
+    border: 1px solid #505050;
+}
+
+QPushButton:disabled {
+    background-color: #3a3a3a;
+    color: #909090;
+    border: 1px solid #4a4a4a;
+}
+
+/* ComboBoxes */
+QComboBox {
+    background-color: #4a4a4a;
+    border: 1px solid #606060;
+    border-radius: 3px;
+    padding: 5px;
+    color: #e0e0e0;
+}
+
+QComboBox::drop-down {
+    border-left: 1px solid #606060;
+    width: 20px;
+}
+
+QComboBox::down-arrow {
+    image: url(resources/icons/down_arrow_white.png); /* You might need a white arrow icon */
+    /* If no icon, use default styling or create one */
+}
+
+QComboBox QAbstractItemView {
+    background-color: #4a4a4a;
+    color: #e0e0e0;
+    selection-background-color: #5d9ddc;
+    border: 1px solid #606060;
+}
+
+/* Sliders */
+QSlider::groove:horizontal {
+    border: 1px solid #505050;
+    height: 8px;
+    background: #404040;
+    margin: 2px 0;
+    border-radius: 4px;
+}
+
+QSlider::handle:horizontal {
+    background: #5d9ddc; /* Accent color */
+    border: 1px solid #5d9ddc;
+    width: 18px;
+    height: 18px;
+    margin: -5px 0; /* Center the handle vertically */
+    border-radius: 9px;
+}
+
+QSlider::add-page:horizontal {
+    background: #505050;
+}
+
+QSlider::sub-page:horizontal {
+    background: #5d9ddc; /* Accent color */
+}
+
+/* SpinBoxes and DoubleSpinBoxes */
+QSpinBox, QDoubleSpinBox {
+    background-color: #4a4a4a;
+    border: 1px solid #606060;
+    border-radius: 3px;
+    padding: 3px;
+    color: #e0e0e0;
+}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 16px;
+    border-left: 1px solid #606060;
+    background: #555555;
+}
+
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 16px;
+    border-left: 1px solid #606060;
+    background: #555555;
+}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    image: url(resources/icons/up_arrow_white.png); /* Need a white up arrow icon */
+}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    image: url(resources/icons/down_arrow_white.png); /* Need a white down arrow icon */
+}
+
+
+/* Checkboxes */
+QCheckBox {
+    color: #e0e0e0;
+    spacing: 5px;
+}
+
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #606060;
+    border-radius: 3px;
+    background-color: #4a4a4a;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #5d9ddc; /* Accent color for checked state */
+    border: 1px solid #5d9ddc;
+    image: url(resources/icons/check_white.png); /* Need a white checkmark icon */
+}
+
+/* TextEdit (for LLM output) */
+QTextEdit {
+    background-color: #4a4a4a;
+    border: 1px solid #606060;
+    border-radius: 3px;
+    padding: 5px;
+    color: #e0e0e0;
+    selection-background-color: #5d9ddc;
+}
+
+/* ScrollArea */
+QScrollArea {
+    border: none; /* No border for the scroll area itself */
+}
+
+QScrollArea > QWidget > QWidget { /* The actual content widget inside scroll area */
+    background-color: #3c3c3c; /* Match GroupBox background */
+}
+
+/* ScrollBars */
+QScrollBar:vertical, QScrollBar:horizontal {
+    border: 1px solid #4a4a4a;
+    background: #3c3c3c;
+    width: 10px;
+    margin: 0px 0px 0px 0px;
+}
+
+QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+    background: #555555;
+    border: 1px solid #606060;
+    border-radius: 5px;
+    min-height: 20px;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    border: none;
+    background: none;
+}
+
+QScrollBar::up-arrow:vertical, QScrollBar::down-arrow:vertical,
+QScrollBar::left-arrow:horizontal, QScrollBar::right-arrow:horizontal {
+    width: 0px; /* Hide arrows if you don't have custom icons */
+    height: 0px;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical,
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: none;
+}

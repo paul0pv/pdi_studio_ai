@@ -1,0 +1,89 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python/
+env/
+venv/
+.venv/
+*/bin/
+*/include/
+*/lib/python*/site-packages/
+# Byte-code files
+*.egg
+*.egg-info
+.eggs/
+# Distribution / build
+dist/
+build/
+*.whl
+*.zip
+
+# IDEs and Editors
+.idea/             # IntelliJ IDEA
+.vscode/           # VS Code
+*.iml              # IntelliJ IDEA module files
+.DS_Store          # macOS folder metadata
+.Trash-* # macOS trash files
+Thumbs.db          # Windows thumbnail cache
+desktop.ini        # Windows system files
+ehthumbs.db        # Windows thumbnail cache
+.history/          # Some editors (e.g., VS Code Local History)
+*.sublime-project
+*.sublime-workspace
+
+# LLM Models and related files
+models/Phi-3-mini-4k-instruct-q4.gguf
+# Or if you want to ignore ALL .gguf files in the models directory:
+models/*.gguf
+# Or to ignore the entire models directory if you download models there
+# models/ # Uncomment this if you *never* want to commit any models
+
+# Data and Logs
+*.log
+logs/
+data/              # If you have any large data files generated or used
+temp/              # Any temporary directories
+tmp/               # Common temporary directories
+
+# Captured images / output images
+# Assuming 'captures/' or 'output/' directories for saved images
+captures/
+output/
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tiff
+*.webp
+
+# User-specific configurations (like presets)
+# If presets.json is generated/modified by users and not part of the core codebase, ignore it.
+config/presets.json
+
+# UI Resources (if not meant to be committed)
+# Assuming 'icons/' and 'gifs/' directories for UI assets.
+# Generally, icons and gifs *are* committed, but if they are very large or dynamically generated, you might ignore them.
+# I'll include them commented out, as they are usually part of the project.
+# ui/resources/icons/
+# ui/resources/gifs/
+
+# Development specific files
+.env               # Environment variables
+.pytest_cache/     # pytest cache
+htmlcov/           # coverage.py HTML report
+.coverage          # coverage.py data file
+.mypy_cache/       # mypy type checker cache
+.ruff_cache/       # Ruff cache
+
+# Compiled/temporary files from C/C++ extensions (like llama-cpp-python might use)
+*.so               # Shared libraries (Linux)
+*.dll              # Dynamic-link libraries (Windows)
+*.dylib            # Dynamic libraries (macOS)
+*.obj              # Object files
+*.lib              # Library files (Windows)
+
+# Any specific build artifacts from llama-cpp-python compilation
+# Depending on how it's built, it might leave artifacts.
+# If you notice other large files being generated, add them here.
