@@ -51,8 +51,7 @@ Requisitos
 Clona el repositorio:
 
 ```Bash
-
-git clone https://github.com/tu-usuario/pdi_studio_ai.git
+git clone https://github.com/paul0pv/pdi_studio_ai.git
 cd pdi_studio_ai
 ``` 
 
@@ -92,7 +91,7 @@ Descarga el modelo desde Hugging Face:
 Crea el directorio models si no existe:
 
 ```Bash
-        mkdir -p models
+mkdir -p models
 ```
 
 Coloca el archivo Phi-3-mini-4k-instruct-q4.gguf dentro de la carpeta models.
@@ -105,6 +104,7 @@ Una vez que hayas instalado todas las dependencias y descargado el modelo LLM, p
 ```Bash
 python main.py
 ```
+
 ## 📂 Estructura del Proyecto
 
 pdi_studio_ai/
@@ -118,6 +118,7 @@ pdi_studio_ai/
 ├── models/                     # Directorio para modelos LLM (ej. Phi-3-mini-4k-instruct-q4.gguf).
 
 ├── config/
+
 │   └── presets.json            # Archivo JSON para guardar y cargar presets de filtros.
 
 ├── video_capture/
@@ -143,6 +144,7 @@ pdi_studio_ai/
     └── widgets/
 
         ├── __init__.py
+
         ├── filter_control.py   # Widget para controlar un filtro individual (parámetros, habilitar/deshabilitar).
 
         ├── filter_selector.py  # Widget para seleccionar y añadir nuevos filtros a la pipeline.
