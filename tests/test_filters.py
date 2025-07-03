@@ -76,7 +76,7 @@ cv2.waitKey(1)
 
 # --- Test Sepia Tint ---
 print("Testing Sepia Tint...")
-sepia_image = filters.apply_sepia_tint(original_image, strength=0.9)
+sepia_image = filters.sepia_tint(original_image, strength=0.9)
 cv2.imshow("Sepia Tint (strength=0.9)", sepia_image)
 cv2.waitKey(1)
 

@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 from processing import filters
 import copy
+from typing import List, Dict, Any
 
 
 class ImageProcessor:
@@ -128,3 +129,28 @@ class ImageProcessor:
     def get_pipeline(self) -> list:
         """Returns the current pipeline configuration."""
         return copy.deepcopy(self.pipeline)
+
+    def apply_custom_pipeline(
+        self, frame: np.ndarray, pipeline: List[Dict[str, Any]]
+    ) -> np.ndarray:
+        """
+        Aplica una pipeline externa directamente a un frame, sin alterar la pipeline interna.
+        Ideal para pipelines generadas dinámicamente (LLM, presets, etc.).
+        """
+        processed = frame.copy()
+
+        for entry in pipeline:
+            name = entry.get("name")
+            params = entry.get("params", {})
+            if name not in self.available_filters:
+                print(f"ImageProcessor: Filtro '{name}' no disponible. Ignorando.")
+                continue
+
+            filter_fn = self.available_filters[name]
+            try:
+                processed = filter_fn(processed, **params)
+            except Exception as e:
+                print(f"ImageProcessor: Error aplicando '{name}' → {e}")
+                continue
+
+        return processed

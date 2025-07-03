@@ -29,6 +29,7 @@ from video_capture.camera_feed import CameraFeed
 from processing.image_processor import ImageProcessor
 from ui.widgets.histogram_plotter import HistogramPlotter
 from ui.widgets.filter_selector import FilterSelector
+from ui.widgets.style_input_preview import StyleInputPreview
 from ui.widgets.pipeline_manager import PipelineManager
 
 from llm.llm_integrator import LLMIntegrator
@@ -60,7 +61,8 @@ class LLMWorker(QThread):
         self.status_update.emit("LLM: Pensando en tu estilo, por favor espera...")
         try:
             pipeline = self.llm_integrator.generate_filter_pipeline(
-                self.user_prompt, list(FILTER_METADATA.keys())
+                self.user_prompt,
+                FILTER_METADATA,  # list(FILTER_METADATA.keys())
             )
             if pipeline:
                 self.pipeline_generated.emit(pipeline)
@@ -172,6 +174,9 @@ class MainWindow(QMainWindow):
         # LLM Integrator instance (assumed path is correct from previous phase)
         self.llm_integrator = LLMIntegrator()
         self.llm_thread = None  # To hold the LLM worker thread
+
+        self.style_preview_widget = StyleInputPreview()
+        self.sidebar_layout.addWidget(self.style_preview_widget)
 
         self.controls_panel_layout.addWidget(self.llm_group_box)
 
@@ -573,4 +578,3 @@ class MainWindow(QMainWindow):
             print("MainWindow: LLM thread stopped.")
         print("MainWindow: All threads stopped.")
         event.accept()
-

@@ -1,4 +1,5 @@
-# llm_integrator.py
+# pdi_studio_ai/llm/llm_integrator.py
+
 import json
 from typing import List, Dict, Any, Optional
 from llama_cpp import Llama
@@ -6,8 +7,10 @@ import os
 
 # Asegúrate de que FILTER_METADATA esté disponible aquí si no lo está.
 # Si FILTER_METADATA está definido en processing/filters.py, asegúrate de importarlo.
-# from processing.filters import FILTER_METADATA # <--- Asegúrate de tener esta importación
-# La importación real de FILTER_METADATA se hace en main_window.py y se pasa.
+# from processing.filters import FILTER_METADATA # <--- Si lo necesitas directamente aquí
+
+# IMPORTAR EL NUEVO MÓDULO DE REGLAS
+from processing.predefined_pipelines import get_pipeline_from_rules
 
 LLM_MODEL_PATH = "models/Phi-3-mini-4k-instruct-q4.gguf"
 
@@ -24,13 +27,6 @@ class LLMIntegrator:
 
         try:
             print(f"LLMIntegrator: Cargando LLM desde {self.model_path}...")
-            # --- Configuración para rendimiento del LLM ---
-            # n_gpu_layers: Número de capas que se descargarán a la GPU.
-            #   - Si tienes GPU NVIDIA con VRAM suficiente, prueba -1 para todas las capas.
-            #     Asegúrate de haber instalado llama-cpp-python con soporte CUDA (ej: pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121).
-            #   - Si no tienes GPU o tienes problemas, déjalo en 0 para usar solo CPU.
-            # n_ctx: Tamaño de la ventana de contexto (máximo de tokens para prompt + respuesta).
-            # n_threads: Número de hilos de CPU a usar. Se recomienda usar el número de núcleos de CPU.
             self.llm = Llama(
                 model_path=self.model_path,
                 n_gpu_layers=-1,  # Ajusta según tu GPU (-1 para todas, 0 para CPU)
@@ -55,7 +51,17 @@ class LLMIntegrator:
             print("LLMIntegrator: LLM no cargado. No se puede generar la pipeline.")
             return None
 
-        # 1. Construir la información de los filtros disponibles
+        # --- INICIO DE LA LÓGICA HÍBRIDA: 1. Intentar el matching basado en reglas primero ---
+        rule_based_pipeline = get_pipeline_from_rules(user_query)
+        if rule_based_pipeline:
+            print(
+                f"LLMIntegrator: Pipeline generada por reglas para '{user_query}': {rule_based_pipeline}"
+            )
+            return rule_based_pipeline
+        # --- FIN DE LA LÓGICA HÍBRIDA ---
+
+        # Si no hay una regla que coincida, se procede con la llamada al LLM
+        # 1. Construir la información de los filtros disponibles (lógica existente)
         filters_info = []
         for name, metadata in available_filters_metadata.items():
             filter_description = metadata.get(
@@ -81,126 +87,140 @@ class LLMIntegrator:
             )
         available_filters_str = "\n".join(filters_info)
 
-        # 2. Definir el prompt del sistema con instrucciones detalladas
-        system_prompt = f"""Eres un asistente avanzado para la generación de pipelines de procesamiento de imágenes. Tu objetivo es transformar peticiones de lenguaje natural en una secuencia estructurada de filtros de imagen en formato JSON.
+        # 2. Definir el prompt del sistema (prompt de la "Nueva estrategia" ya probada)
+        system_prompt = f"""Eres un extractor de información de filtros de imagen.
+Tu **ÚNICA FUNCIÓN** es identificar los filtros de imagen y sus parámetros
+a partir de una petición de usuario, y formatear esta información en un
+objeto JSON.
 
-**Instrucciones clave:**
--   Debes elegir filtros únicamente de la lista proporcionada.
--   Cada filtro debe ser un objeto JSON con las claves "name" (nombre del filtro) y "params" (un diccionario de sus parámetros).
--   Si un filtro tiene parámetros, DEBES incluirlos en el diccionario "params" con sus valores. Si un parámetro tiene un valor predeterminado y no se especifica explícitamente en la petición del usuario, puedes usar el predeterminado.
--   Si un filtro no requiere parámetros (su diccionario "params" en los metadatos está vacío), su diccionario "params" en la salida JSON debe ser un diccionario vacío: `{{}}`.
--   La salida final debe ser una lista de objetos JSON, donde cada objeto representa un filtro en la secuencia de la pipeline.
--   Asegúrate de que el JSON sea válido y esté bien formado.
--   No incluyas texto adicional fuera del JSON.
+**REGLAS ESTRICTAS DE SALIDA:**
+1.  La salida **DEBE ser un objeto JSON a nivel raíz**.
+2.  Este objeto DEBE contener una clave llamada `"filters_identified"`.
+3.  El valor de `"filters_identified"` DEBE ser un **array JSON**.
+4.  Cada objeto dentro de este array DEBE representar un filtro identificado.
+5.  Cada objeto de filtro DEBE tener la clave `"name"` con el nombre **EXACTO** del filtro de la lista proporcionada.
+6.  Si se mencionan parámetros para un filtro, DEBEN incluirse como **claves adicionales** dentro del objeto de ese filtro (no anidados bajo una clave "params" todavía).
+7.  **SOLO** incluye filtros que estén en la lista `Filtros Disponibles`. Ignora cualquier solicitud de filtro no listado.
+8.  **SOLO** incluye parámetros que estén definidos para ese filtro en la lista `Filtros Disponibles`.
+9.  **NO incluyas texto adicional, explicaciones, preámbulos o comentarios fuera del JSON.**
 
-**Filtros Disponibles y sus detalles:**
+**Filtros Disponibles y sus detalles (¡SOLO PUEDES USAR ESTOS!):**
 {available_filters_str}
 
-**Ejemplo de formato de salida JSON:**
+**EJEMPLOS DEL FORMATO DE SALIDA REQUERIDO (¡ADHIÉRETE A ESTE FORMATO!):**
+(Si el usuario dice "aplicar tono sepia y un poco de ruido")
 ```json
-[
-  {{
-    "name": "convert_to_grayscale",
-    "params": {{}}
-  }},
-  {{
-    "name": "apply_gaussian_blur",
-    "params": {{
-      "ksize": 7
-    }}
-  }},
-  {{
-    "name": "adjust_brightness_contrast",
-    "params": {{
-      "alpha": 1.2,
-      "beta": 10
-    }}
-  }}
-]
-
+{{
+  "filters_identified": [
+    {{ "name": "apply_sepia_tone" }},
+    {{ "name": "add_noise", "intensity": 0.05 }}
+  ]
+}}
+(Si el usuario dice "blanco y negro y desenfoque gaussiano con ksize 9")
+{{
+  "filters_identified": [
+    {{ "name": "convert_to_grayscale" }},
+    {{ "name": "apply_gaussian_blur", "ksize": 9 }}
+  ]
+}}
 """
-
         # 3. Preparar el mensaje del usuario
-        user_query_with_context = (
-            f'Genera una pipeline de procesamiento de imágenes para: "{user_query}"'
-        )
-
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_query_with_context},
+            {"role": "user", "content": user_query},
         ]
 
-        print("LLMIntegrator: Enviando prompt al LLM...")
-        # print(f"--- SYSTEM PROMPT ---\n{system_prompt}\n--- USER QUERY ---\n{user_query_with_context}") # Para depuración
+        print("LLMIntegrator: Enviando prompt al LLM (Nueva estrategia/Fallback)...")
 
         raw_json_str = ""
         try:
             response = self.llm.create_chat_completion(
                 messages=messages,
                 response_format={"type": "json_object"},
-                temperature=0.7,
-                max_tokens=500,
+                temperature=0.01,
+                max_tokens=4096,
             )
             raw_json_str = response["choices"][0]["message"]["content"].strip()
             print(f"LLMIntegrator: Respuesta cruda del LLM:\n{raw_json_str}")
 
-            # 4. Post-procesamiento y validación de la respuesta
-            # Limpieza básica: A veces el LLM puede incluir bloques de código markdown
+            # 4. Post-procesamiento y construcción de la pipeline (más robusto)
+            # Eliminar bloques de código markdown si el LLM los incluye
             if raw_json_str.startswith("```json") and raw_json_str.endswith("```"):
                 raw_json_str = raw_json_str[7:-3].strip()
             elif raw_json_str.startswith("```") and raw_json_str.endswith("```"):
                 raw_json_str = raw_json_str[3:-3].strip()
 
-            # Esto ya lo tenías, asegura que corrige 'namee'
-            raw_json_str = raw_json_str.replace('"namee":', '"name":')
-            raw_json_str = raw_json_str.replace(
-                "'namee':", "'name':"
-            )  # Por si usa comillas simples
+            parsed_data = json.loads(raw_json_str)
 
-            pipeline = json.loads(raw_json_str)
-            if not isinstance(pipeline, list):
+            # Esperamos un objeto con la clave "filters_identified" que contiene un array
+            identified_filters_list = parsed_data.get("filters_identified")
+
+            if not isinstance(identified_filters_list, list):
                 print(
-                    f"LLMIntegrator Error: La respuesta del LLM no es un array JSON. Cruda: {raw_json_str}"
+                    f"LLMIntegrator Error: La respuesta del LLM no contiene un array válido en 'filters_identified'. Cruda: {raw_json_str}"
                 )
                 return None
 
-            # Validación más robusta de la estructura de la pipeline generada
-            validated_pipeline = []
-            for entry in pipeline:
-                if not isinstance(entry, dict):
+            pipeline = []
+            for filter_entry_llm in identified_filters_list:
+                if not isinstance(filter_entry_llm, dict):
                     print(
-                        f"LLMIntegrator Error: Entrada de filtro inválida (no es un diccionario): {entry}. Cruda: {raw_json_str}"
+                        f"LLMIntegrator Warning: Entrada de filtro inválida (no es diccionario): {filter_entry_llm}. Ignorando."
                     )
-                    return None
+                    continue
 
-                filter_name = entry.get("name")
-                params = entry.get("params")
-
+                filter_name = filter_entry_llm.get("name")
                 if not filter_name or not isinstance(filter_name, str):
                     print(
-                        f"LLMIntegrator Error: Entrada de filtro inválida (falta 'name' o no es string): {entry}. Cruda: {raw_json_str}"
+                        f"LLMIntegrator Warning: Entrada de filtro sin nombre válido: {filter_entry_llm}. Ignorando."
                     )
-                    return None
+                    continue
 
-                if not isinstance(params, dict):
-                    print(
-                        f"LLMIntegrator Error: Entrada de filtro inválida (falta 'params' o no es diccionario): {entry}. Cruda: {raw_json_str}"
-                    )
-                    return None
-
-                # Validación de si el nombre del filtro existe en los metadatos disponibles
                 if filter_name not in available_filters_metadata:
                     print(
-                        f"LLMIntegrator Warning: El filtro '{filter_name}' generado por el LLM no está en la lista de filtros disponibles. Ignorando."
+                        f"LLMIntegrator Warning: El filtro '{filter_name}' generado por el LLM no existe en la lista de filtros disponibles. Ignorando."
                     )
-                    continue  # Ignorar filtros no existentes
+                    continue
 
-                validated_pipeline.append(entry)
+                # Extraer parámetros: Todas las demás claves en el objeto del filtro LLM
+                params = {}
+                filter_metadata = available_filters_metadata.get(filter_name, {})
+                defined_params = filter_metadata.get("params", {})
 
-            print(
-                f"LLMIntegrator: Pipeline generada exitosamente: {validated_pipeline}"
-            )
-            return validated_pipeline
+                for key, value in filter_entry_llm.items():
+                    if (
+                        key != "name" and key in defined_params
+                    ):  # Solo toma parámetros conocidos
+                        # Intentar convertir el valor al tipo correcto si es posible
+                        expected_type = defined_params[key].get("type")
+                        try:
+                            # Asumiendo que 'int_slider' y 'float_slider' esperan int/float
+                            if expected_type == "int_slider" and isinstance(
+                                value, (int, float)
+                            ):
+                                params[key] = int(value)
+                            elif expected_type == "float_slider" and isinstance(
+                                value, (int, float)
+                            ):
+                                params[key] = float(value)
+                            else:  # Para otros tipos o si la conversión no es necesaria/falla
+                                params[key] = value
+                        except (ValueError, TypeError):
+                            print(
+                                f"LLMIntegrator Warning: No se pudo convertir el parámetro '{key}' con valor '{value}' al tipo esperado '{expected_type}'. Usando valor original."
+                            )
+                            params[key] = value
+
+                pipeline.append({"name": filter_name, "params": params})
+
+            if not pipeline:
+                print(
+                    "LLMIntegrator: El LLM no identificó filtros válidos para la petición."
+                )
+                return None
+
+            print(f"LLMIntegrator: Pipeline generada exitosamente: {pipeline}")
+            return pipeline
 
         except json.JSONDecodeError as e:
             print(
@@ -209,6 +229,6 @@ class LLMIntegrator:
             return None
         except Exception as e:
             print(
-                f"LLMIntegrator Error: Ocurrió un error inesperado durante la inferencia del LLM: {e}"
+                f"LLMIntegrator Error: Ocurrió un error inesperado durante la inferencia o el parseo del LLM: {e}"
             )
             return None
