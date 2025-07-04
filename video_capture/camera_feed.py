@@ -10,7 +10,7 @@ class CameraFeed(QThread):
     # Define a signal that will emit a NumPy array (the captured frame)
     frame_ready = pyqtSignal(np.ndarray)
 
-    def __init__(self, camera_index=0):
+    def __init__(self, camera_index=1):
         """
         Initializes the CameraFeed thread.
 
@@ -103,3 +103,10 @@ class CameraFeed(QThread):
     def get_latest_frame(self):
         """Devuelve el último frame capturado (puede ser None si aún no hay)."""
         return self._latest_frame
+
+    def switch_camera(self, new_index: int):
+        if self.cap.isOpened():
+            self.cap.release()
+        self.cap = cv2.VideoCapture(new_index)
+        if not self.cap.isOpened():
+            raise RuntimeError(f"No se pudo abrir la cámara en el índice {new_index}")

@@ -19,4 +19,6 @@ def get_filtered_metadata(
         "general": list(full_metadata.keys()),
     }
     selected_filters = style_to_filters.get(style_detected, [])
+    if not selected_filters:
+        selected_filters = list(full_metadata.keys())
     return {f: full_metadata[f] for f in selected_filters if f in full_metadata}

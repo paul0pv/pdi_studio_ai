@@ -44,15 +44,24 @@ def build_prompt(user_query: str, metadata: Dict[str, Any]) -> str:
     system_prompt = f"""
 Eres un asistente experto en procesamiento de imágenes. Tu tarea es analizar una descripción en lenguaje natural y devolver una lista de filtros de imagen que se deben aplicar, en formato JSON.
 
-Solo debes usar los filtros disponibles que se listan a continuación. Cada filtro puede tener parámetros opcionales. Si no se especifican, usa valores por defecto razonables.
+⚠️ IMPORTANTE:
+- Responde únicamente con un objeto JSON válido.
+- No incluyas explicaciones, comentarios ni texto adicional.
+- Usa solo los filtros listados a continuación.
+- Si no estás seguro, responde con una lista vacía: {{"filters_identified": []}}
 
 Filtros disponibles:
 {filters_text}
 
-Formato de respuesta esperado:
-{EXAMPLES}
+Ejemplo de respuesta válida:
+{{
+  "filters_identified": [
+    {{"name": "convert_to_grayscale"}},
+    {{"name": "adjust_brightness_contrast", "contrast": 20}}
+  ]
+}}
 
-Ahora responde a la siguiente solicitud del usuario:
+Ahora responde a esta solicitud del usuario:
+"{user_query}"
 """
-
     return system_prompt.strip()

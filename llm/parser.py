@@ -14,6 +14,14 @@ def parse_llm_response(
         elif raw_response.startswith("```") and raw_response.endswith("```"):
             raw_response = raw_response[3:-3].strip()
 
+        if not raw_response.strip():
+            print("[Parser] Respuesta vacía del modelo.")
+            return None
+
+        if not raw_response.strip().startswith("{"):
+            print("[Parser] Respuesta no parece ser JSON.")
+            print("Contenido recibido:", raw_response)
+            return None
         parsed_json = json.loads(raw_response)
         filters_list = parsed_json.get("filters_identified")
 

@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QCheckBox,
     QDoubleSpinBox,
+    QComboBox,
 )
 from PyQt6.QtCore import (
     Qt,
@@ -37,6 +38,7 @@ import os  # Import os for path handling
 
 # Import custom modules
 from video_capture.camera_feed import CameraFeed
+from video_capture.camera_utils import list_available_cameras
 from ui.widgets.histogram_plotter import HistogramPlotter
 from ui.widgets.filter_selector import FilterSelector
 from ui.widgets.style_input_preview import StyleInputPreview
@@ -44,7 +46,8 @@ from ui.widgets.pipeline_manager import PipelineManager
 from ui.widgets.preset_selector import PresetSelector
 from ui.widgets.favorites_tab import FavoritesTab
 from processing.image_processor import ImageProcessor
-from processing.image_processing_worker import ImageProcessingWorker  # New worker
+from processing.image_processing_worker import ImageProcessingWorker
+from llm.llm_worker import LLMWorker
 
 # from llm.llm_integrator import LLMIntegrator
 from llm.pipeline_generator import PipelineGenerator
@@ -107,6 +110,15 @@ class MainWindow(QMainWindow):
         self.video_controls_layout.addWidget(self.play_pause_button)
         self.video_controls_layout.addWidget(self.capture_button)
         self.video_display_layout.addLayout(self.video_controls_layout)
+
+        # Camera selector
+        self.camera_selector = QComboBox()
+        self.camera_selector_label = QLabel("Seleccionar cámara:")
+        self.camera_selector_label.setStyleSheet("font-weight: bold;")
+        self.camera_selector.addItems([f"Cam {i}" for i in list_available_cameras()])
+        self.camera_selector.currentIndexChanged.connect(self._on_camera_selected)
+        self.video_controls_layout.addWidget(self.camera_selector_label)
+        self.video_controls_layout.addWidget(self.camera_selector)
 
         # --- Histogram Plotter ---
         self.histogram_widget = HistogramPlotter()
@@ -375,13 +387,14 @@ class MainWindow(QMainWindow):
     def _generate_pipeline_with_llm(self):
         prompt = self.llm_prompt_input.text().strip()
         self.style_preview_widget.set_prompt(prompt)
+
         if not prompt:
             self.show_status_message(
                 "Por favor, introduce una descripción para el LLM.", 3000
             )
             return
 
-        # Disable UI elements during LLM processing
+        # Desactivar UI durante procesamiento
         self.llm_generate_button.setEnabled(False)
         self.llm_prompt_input.setEnabled(False)
         self.filter_selector.setEnabled(False)
@@ -392,31 +405,17 @@ class MainWindow(QMainWindow):
             self.llm_loading_spinner.show()
             self.llm_movie.start()
 
-        try:
-            self.pipeline_generator.debug = self.debug_checkbox.isChecked()
-            self.pipeline_generator.temperature = self.temperature_input.value()
+        # Configurar el generador
+        self.pipeline_generator.debug = self.debug_checkbox.isChecked()
+        self.pipeline_generator.temperature = self.temperature_input.value()
 
-            pipeline = self.pipeline_generator.generate(prompt)
-
-            if pipeline:
-                self.pipeline_manager.set_pipeline_from_config(pipeline)
-                self.image_processor.set_pipeline(pipeline)
-                self.show_status_message("Pipeline generada por LLM.")
-                self.llm_status_label.setText("LLM: Pipeline generada exitosamente.")
-            else:
-                self.show_status_message("LLM no pudo generar un pipeline válido.")
-                self.llm_status_label.setText("LLM: No se pudo generar pipeline.")
-        except Exception as e:
-            self.show_status_message(f"Error LLM: {e}", 5000)
-            self.llm_status_label.setText("LLM: Error durante la inferencia.")
-        finally:
-            self.llm_generate_button.setEnabled(True)
-            self.llm_prompt_input.setEnabled(True)
-            self.filter_selector.setEnabled(True)
-            self.pipeline_manager.setEnabled(True)
-            if self.llm_movie.isValid():
-                self.llm_movie.stop()
-                self.llm_loading_spinner.hide()
+        # Lanzar el worker
+        self.llm_worker = LLMWorker(self.pipeline_generator, prompt)
+        self.llm_worker.pipeline_ready.connect(self._on_pipeline_ready)
+        self.llm_worker.fallback_used.connect(self._on_fallback_used)
+        self.llm_worker.error_occurred.connect(self._on_llm_error)
+        self.llm_worker.finished.connect(self._on_llm_finished)
+        self.llm_worker.start()
 
     def _on_pipeline_generated_by_llm(self, pipeline: list):
         """Slot to receive the generated pipeline from LLMWorker."""
@@ -431,19 +430,25 @@ class MainWindow(QMainWindow):
         else:
             self.show_status_message("LLM no pudo generar un pipeline válido.")
 
-    def _on_llm_error(self, error_message: str):
-        """Slot to handle errors from LLMWorker."""
-        QMessageBox.warning(self, "Error del LLM", error_message)
-        self.show_status_message(f"Error LLM: {error_message}", 5000)
+    def _on_pipeline_ready(self, pipeline):
+        self.pipeline_manager.set_pipeline_from_config(pipeline)
+        self.image_processor.set_pipeline(pipeline)
+        self.show_status_message("✅ Pipeline generada por LLM.")
+        self.llm_status_label.setText("LLM: Pipeline generada exitosamente.")
+
+    def _on_fallback_used(self, style):
+        self.show_status_message(f"⚠️ Se usó fallback para estilo: {style}")
+        self.llm_status_label.setText(f"LLM: Fallback activado ({style})")
+
+    def _on_llm_error(self, message):
+        self.show_status_message(f"❌ Error LLM: {message}", 5000)
+        self.llm_status_label.setText("LLM: Error durante la inferencia.")
 
     def _on_llm_finished(self):
-        """Called when the LLMWorker thread finishes, regardless of success or error."""
-        # Enable UI elements
         self.llm_generate_button.setEnabled(True)
         self.llm_prompt_input.setEnabled(True)
         self.filter_selector.setEnabled(True)
         self.pipeline_manager.setEnabled(True)
-
         if self.llm_movie.isValid():
             self.llm_movie.stop()
             self.llm_loading_spinner.hide()
@@ -482,6 +487,15 @@ class MainWindow(QMainWindow):
         self.pipeline_manager.set_pipeline_from_config(pipeline)
         self.image_processor.set_pipeline(pipeline)
         self.show_status_message(f"Preset '{name}' aplicado.")
+
+    def _on_camera_selected(self, index):
+        selected_index = self.camera_selector.currentText().split()[-1]
+        try:
+            selected_index = int(selected_index)
+            self.camera_feed.switch_camera(selected_index)
+            self.show_status_message(f"🎥 Cámara cambiada a índice {selected_index}")
+        except Exception as e:
+            self.show_status_message(f"❌ Error al cambiar de cámara: {e}")
 
     def closeEvent(self, event):
         """
