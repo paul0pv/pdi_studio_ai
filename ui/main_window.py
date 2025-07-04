@@ -17,8 +17,19 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QStatusBar,  # Import QStatusBar
     QFileDialog,  # Import QFileDialog for saving captures
+    QTabWidget,
+    QSplitter,
+    QCheckBox,
+    QDoubleSpinBox,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QDateTime  # Import QDateTime
+from PyQt6.QtCore import (
+    Qt,
+    QThread,
+    pyqtSignal,
+    QTimer,
+    QDateTime,
+    QSettings,
+)  # Import QDateTime
 from PyQt6.QtGui import QPixmap, QImage, QMovie  # Import QMovie for LLM spinner
 import numpy as np
 import cv2
@@ -26,13 +37,18 @@ import os  # Import os for path handling
 
 # Import custom modules
 from video_capture.camera_feed import CameraFeed
-from processing.image_processor import ImageProcessor
 from ui.widgets.histogram_plotter import HistogramPlotter
 from ui.widgets.filter_selector import FilterSelector
 from ui.widgets.style_input_preview import StyleInputPreview
 from ui.widgets.pipeline_manager import PipelineManager
+from ui.widgets.preset_selector import PresetSelector
+from ui.widgets.favorites_tab import FavoritesTab
+from processing.image_processor import ImageProcessor
+from processing.image_processing_worker import ImageProcessingWorker  # New worker
 
-from llm.llm_integrator import LLMIntegrator
+# from llm.llm_integrator import LLMIntegrator
+from llm.pipeline_generator import PipelineGenerator
+
 from config.presets import (
     load_presets,
     save_presets,
@@ -40,46 +56,24 @@ from config.presets import (
     remove_preset,
     PRESETS_FILE,
 )
+
+# from config.preset_meta import (
+#    add_to_recent,
+#    get_recent,
+#    toggle_favorite,
+#    get_favorites,
+#    is_favorite,
+# )
 from processing.filters import (
     FILTER_METADATA,
     AVAILABLE_FILTERS,
 )  # Import for FilterSelector setup
-from processing.image_processing_worker import ImageProcessingWorker  # New worker
-
-
-class LLMWorker(QThread):
-    pipeline_generated = pyqtSignal(list)
-    error_occurred = pyqtSignal(str)
-    status_update = pyqtSignal(str)
-
-    def __init__(self, llm_integrator: LLMIntegrator, user_prompt: str):
-        super().__init__()
-        self.llm_integrator = llm_integrator
-        self.user_prompt = user_prompt
-
-    def run(self):
-        self.status_update.emit("LLM: Pensando en tu estilo, por favor espera...")
-        try:
-            pipeline = self.llm_integrator.generate_filter_pipeline(
-                self.user_prompt,
-                FILTER_METADATA,  # list(FILTER_METADATA.keys())
-            )
-            if pipeline:
-                self.pipeline_generated.emit(pipeline)
-                self.status_update.emit("LLM: Pipeline generada exitosamente.")
-            else:
-                self.error_occurred.emit(
-                    "LLM: No se pudo generar el pipeline. Intenta de nuevo."
-                )
-                self.status_update.emit("LLM: Error al generar pipeline.")
-        except Exception as e:
-            self.error_occurred.emit(f"LLM: Error durante la inferencia: {e}")
-            self.status_update.emit("LLM: Error de inferencia.")
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, pipeline_generator: PipelineGenerator):
         super().__init__()
+        self.pipeline_generator = pipeline_generator
         print("MainWindow: Initializing MainWindow UI components...")
 
         self.setWindowTitle("PDI Live Studio")
@@ -92,6 +86,7 @@ class MainWindow(QMainWindow):
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.main_layout = QHBoxLayout(self.central_widget)
+        # self.pipeline_tabs = QTabWidget()
 
         # --- Video Display Area ---
         self.video_display_layout = QVBoxLayout()
@@ -119,15 +114,31 @@ class MainWindow(QMainWindow):
 
         self.main_layout.addLayout(self.video_display_layout)
 
+        # --- Camera Feed Setup ---
+        self.camera_feed = CameraFeed()
+        self.camera_feed.frame_ready.connect(self._on_camera_frame_ready)
+        self.camera_feed.start()
+        self.camera_is_running = True  # Track camera state
+
         # --- Controls Panel (Right Side) ---
         self.controls_panel_layout = QVBoxLayout()
-        self.controls_panel_layout.setContentsMargins(
-            10, 10, 10, 10
-        )  # Add some padding
+        self.controls_panel_layout.setContentsMargins(10, 10, 10, 10)
+
+        # --- Initialize widgets before using ---
+        self.filter_selector = FilterSelector(available_filters=AVAILABLE_FILTERS)
+        self.filter_selector.filter_selected_to_add.connect(
+            self._add_filter_to_pipeline_from_selector
+        )
+
+        self.pipeline_manager = PipelineManager()
+        self.pipeline_manager.pipeline_updated.connect(self.set_pipeline_from_manager)
+
+        self.style_preview_widget = StyleInputPreview(
+            self.camera_feed, self.pipeline_generator
+        )
 
         # --- LLM Integration Group ---
         self.llm_group_box = QGroupBox("Asistente de Estilos (LLM)")
-        self.llm_group_box.setCheckable(False)  # Not directly checkable
         self.llm_group_box_layout = QVBoxLayout(self.llm_group_box)
 
         self.llm_prompt_input = QLineEdit()
@@ -140,75 +151,81 @@ class MainWindow(QMainWindow):
         self.llm_generate_button.clicked.connect(self._generate_pipeline_with_llm)
         self.llm_group_box_layout.addWidget(self.llm_generate_button)
 
-        # LLM Status Indicator (New)
+        self.temperature_input = QDoubleSpinBox()
+        self.temperature_input.setRange(0.0, 1.0)
+        self.temperature_input.setSingleStep(0.05)
+        self.temperature_input.setValue(0.2)
+        self.temperature_input.setSuffix("  Temperatura")
+        self.llm_group_box_layout.addWidget(self.temperature_input)
+
+        self.debug_checkbox = QCheckBox("Mostrar prompt generado")
+        self.llm_group_box_layout.addWidget(self.debug_checkbox)
+
         self.llm_status_label = QLabel("LLM: Listo")
         self.llm_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.llm_status_label.setStyleSheet(
-            "color: #a0a0a0; font-size: 12px; margin-top: 5px;"
-        )
         self.llm_group_box_layout.addWidget(self.llm_status_label)
 
-        self.llm_loading_spinner = QLabel()  # Spinner label
+        self.llm_loading_spinner = QLabel()
         self.llm_loading_spinner.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        # Ensure the path to the GIF is correct based on your resources folder
         spinner_gif_path = os.path.join(
             os.path.dirname(__file__), "..", "resources", "loading_spinner.gif"
         )
         self.llm_movie = QMovie(spinner_gif_path)
         if self.llm_movie.isValid():
             self.llm_loading_spinner.setMovie(self.llm_movie)
-            self.llm_loading_spinner.setFixedSize(
-                32, 32
-            )  # Set a fixed size for the spinner
-            self.llm_loading_spinner.setScaledContents(True)  # Scale GIF to label size
-            self.llm_loading_spinner.hide()  # Hidden by default
-        else:
-            print(
-                f"Warning: loading_spinner.gif not found or invalid at {spinner_gif_path}."
-            )
-            self.llm_loading_spinner.setText("Cargando...")  # Fallback text
+            self.llm_loading_spinner.setFixedSize(32, 32)
+            self.llm_loading_spinner.setScaledContents(True)
             self.llm_loading_spinner.hide()
-
+        else:
+            self.llm_loading_spinner.setText("Cargando...")
+            self.llm_loading_spinner.hide()
         self.llm_group_box_layout.addWidget(self.llm_loading_spinner)
 
-        # LLM Integrator instance (assumed path is correct from previous phase)
-        self.llm_integrator = LLMIntegrator()
-        self.llm_thread = None  # To hold the LLM worker thread
-
-        self.style_preview_widget = StyleInputPreview()
-        self.sidebar_layout.addWidget(self.style_preview_widget)
-
-        self.controls_panel_layout.addWidget(self.llm_group_box)
-
-        # --- Filter Selector ---
-        # Pass available filters and metadata to the selector
-        self.filter_selector = FilterSelector(available_filters=AVAILABLE_FILTERS)
-        # Connect the signal to the new method
-        self.filter_selector.filter_selected_to_add.connect(
-            self._add_filter_to_pipeline_from_selector
+        self.preset_selector = PresetSelector()
+        self.preset_selector.set_pipeline_source(
+            self.pipeline_manager.get_current_pipeline_config
         )
-        self.controls_panel_layout.addWidget(self.filter_selector)
+        self.preset_selector.preset_applied.connect(self._apply_preset_from_selector)
 
-        # --- Pipeline Manager ---
-        self.pipeline_manager = PipelineManager()
-        self.pipeline_manager.pipeline_updated.connect(self.set_pipeline_from_manager)
-        self.controls_panel_layout.addWidget(self.pipeline_manager)
+        # --- Tabs for Manual flux vs LLM assistant ---
+        self.pipeline_tabs = QTabWidget()
 
-        # Spacer to push everything to the top
+        # Manual Tab
+        manual_tab = QWidget()
+        manual_layout = QVBoxLayout(manual_tab)
+        manual_layout.addWidget(self.filter_selector)
+
+        # Splitter horizontal entre pipeline y presets
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(self.pipeline_manager)
+        splitter.addWidget(self.preset_selector)
+
+        # Opcional: proporción inicial (60% pipeline, 40% presets)
+        splitter.setSizes([600, 400])
+
+        manual_layout.addWidget(splitter)
+
+        # Favorites Tab
+        self.favorites_tab = FavoritesTab(self._apply_preset_from_selector)
+
+        # LLM Tab
+        llm_tab = QWidget()
+        llm_layout = QVBoxLayout(llm_tab)
+        llm_layout.addWidget(self.llm_group_box)
+        llm_layout.addWidget(self.style_preview_widget)
+
+        self.pipeline_tabs.addTab(manual_tab, "Manual")
+        self.pipeline_tabs.addTab(llm_tab, "Asistente LLM")
+        self.pipeline_tabs.addTab(self.favorites_tab, "Favoritos")
+
+        self.controls_panel_layout.addWidget(self.pipeline_tabs)
         self.controls_panel_layout.addStretch(1)
-
         self.main_layout.addLayout(self.controls_panel_layout)
 
         # --- Status Bar (New) ---
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
         self.show_status_message("PDI Live Studio iniciado.")
-
-        # --- Camera Feed Setup ---
-        self.camera_feed = CameraFeed()
-        self.camera_feed.frame_ready.connect(self._on_camera_frame_ready)
-        self.camera_feed.start()
-        self.camera_is_running = True  # Track camera state
 
         # --- Image Processing ---
         self.image_processor = ImageProcessor()
@@ -220,15 +237,11 @@ class MainWindow(QMainWindow):
         self.processing_worker.start()
 
         # Initial pipeline setup for the image processor and worker
-        # CORRECTED LINE: from .get_current_pipeline() to .get_current_pipeline_config()
         self.set_pipeline_from_manager(
             self.pipeline_manager.get_current_pipeline_config()
         )
 
-        # Load and display presets section (from previous phase)
-        # Assuming you had _setup_preset_ui() which needs to be uncommented or implemented
-        # self._setup_preset_ui()  # Call this if you have it implemented
-
+        self.pipeline_generator = pipeline_generator
         # Store current processed frame for capture
         self.current_processed_frame = None  # Initialize
 
@@ -361,6 +374,7 @@ class MainWindow(QMainWindow):
     # --- New LLM-related methods (moved from _generate_pipeline_with_llm or added) ---
     def _generate_pipeline_with_llm(self):
         prompt = self.llm_prompt_input.text().strip()
+        self.style_preview_widget.set_prompt(prompt)
         if not prompt:
             self.show_status_message(
                 "Por favor, introduce una descripción para el LLM.", 3000
@@ -378,16 +392,31 @@ class MainWindow(QMainWindow):
             self.llm_loading_spinner.show()
             self.llm_movie.start()
 
-        self.llm_thread = LLMWorker(self.llm_integrator, prompt)
-        self.llm_thread.pipeline_generated.connect(self._on_pipeline_generated_by_llm)
-        self.llm_thread.error_occurred.connect(self._on_llm_error)
-        self.llm_thread.status_update.connect(
-            self.llm_status_label.setText
-        )  # Update status label
-        self.llm_thread.finished.connect(
-            self._on_llm_finished
-        )  # Enable UI elements when finished
-        self.llm_thread.start()
+        try:
+            self.pipeline_generator.debug = self.debug_checkbox.isChecked()
+            self.pipeline_generator.temperature = self.temperature_input.value()
+
+            pipeline = self.pipeline_generator.generate(prompt)
+
+            if pipeline:
+                self.pipeline_manager.set_pipeline_from_config(pipeline)
+                self.image_processor.set_pipeline(pipeline)
+                self.show_status_message("Pipeline generada por LLM.")
+                self.llm_status_label.setText("LLM: Pipeline generada exitosamente.")
+            else:
+                self.show_status_message("LLM no pudo generar un pipeline válido.")
+                self.llm_status_label.setText("LLM: No se pudo generar pipeline.")
+        except Exception as e:
+            self.show_status_message(f"Error LLM: {e}", 5000)
+            self.llm_status_label.setText("LLM: Error durante la inferencia.")
+        finally:
+            self.llm_generate_button.setEnabled(True)
+            self.llm_prompt_input.setEnabled(True)
+            self.filter_selector.setEnabled(True)
+            self.pipeline_manager.setEnabled(True)
+            if self.llm_movie.isValid():
+                self.llm_movie.stop()
+                self.llm_loading_spinner.hide()
 
     def _on_pipeline_generated_by_llm(self, pipeline: list):
         """Slot to receive the generated pipeline from LLMWorker."""
@@ -449,114 +478,10 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "Error de Procesamiento de Imagen", error_message)
         self.show_status_message(f"Error de procesamiento: {error_message}", 5000)
 
-    def _setup_preset_ui(self):
-        """
-        Sets up the UI elements for preset management and loads initial presets.
-        This method will be called during MainWindow initialization.
-        """
-        # --- Presets Section (already added in __init__, just connecting logic) ---
-        # Assuming these widgets already exist from previous steps in __init__
-        # self.presets_group = QGroupBox("Gestión de Presets")
-        # self.preset_combobox = QComboBox()
-        # self.save_preset_name_input = QLineEdit()
-        # save_preset_button = QPushButton("Guardar Preset Actual")
-        # load_preset_button = QPushButton("Cargar Preset")
-        # delete_preset_button = QPushButton("Eliminar Preset Seleccionado")
-        # self.preset_status_output = QLabel("")
-
-        # Connect signals for preset buttons
-        self.findChild(QPushButton, "Cargar Preset").clicked.connect(
-            self._on_load_preset_clicked
-        )
-        self.findChild(QPushButton, "Guardar Preset Actual").clicked.connect(
-            self._on_save_preset_clicked
-        )
-        self.findChild(QPushButton, "Eliminar Preset Seleccionado").clicked.connect(
-            self._on_delete_preset_clicked
-        )
-
-        self._load_and_populate_presets()  # Load presets on startup
-
-    # --- Presets Management Slots (Copied from previous phase, ensure they are defined) ---
-    def _load_and_populate_presets(self):
-        """Loads presets from file and populates the QComboBox."""
-        self.available_presets = load_presets()
-        self.preset_combobox.clear()
-        if self.available_presets:
-            self.preset_combobox.addItems(sorted(self.available_presets.keys()))
-            self.preset_combobox.setCurrentIndex(-1)  # No selection initially
-            self.preset_status_output.setText(
-                f"Presets cargados: {len(self.available_presets)}"
-            )
-        else:
-            self.preset_combobox.setPlaceholderText("No hay presets disponibles")
-            self.preset_status_output.setText("No hay presets guardados.")
-
-    def _on_load_preset_clicked(self):
-        """Loads the selected preset and applies it to the pipeline."""
-        selected_preset_name = self.preset_combobox.currentText()
-        if (
-            not selected_preset_name
-            or selected_preset_name == "No hay presets disponibles"
-        ):
-            self.preset_status_output.setText("Selecciona un preset para cargar.")
-            return
-
-        pipeline_to_load = self.available_presets.get(selected_preset_name)
-        if pipeline_to_load:
-            self.pipeline_manager.set_pipeline_from_config(pipeline_to_load)
-            self.preset_status_output.setText(
-                f"Preset '{selected_preset_name}' cargado."
-            )
-        else:
-            self.preset_status_output.setText(
-                f"Error: Preset '{selected_preset_name}' no encontrado."
-            )
-
-    def _on_save_preset_clicked(self):
-        """Saves the current pipeline as a new preset."""
-        preset_name = self.save_preset_name_input.text().strip()
-        if not preset_name:
-            self.preset_status_output.setText(
-                "Por favor, introduce un nombre para el preset."
-            )
-            return
-
-        current_pipeline = self.pipeline_manager.get_current_pipeline_config()
-        if not current_pipeline:
-            self.preset_status_output.setText(
-                "La pipeline actual está vacía. No se puede guardar."
-            )
-            return
-
-        try:
-            add_preset(preset_name, current_pipeline)
-            self.preset_status_output.setText(
-                f"Preset '{preset_name}' guardado exitosamente."
-            )
-            self.save_preset_name_input.clear()  # Clear input field
-            self._load_and_populate_presets()  # Refresh combobox
-        except Exception as e:
-            self.preset_status_output.setText(f"Error al guardar preset: {e}")
-
-    def _on_delete_preset_clicked(self):
-        """Deletes the selected preset."""
-        selected_preset_name = self.preset_combobox.currentText()
-        if (
-            not selected_preset_name
-            or selected_preset_name == "No hay presets disponibles"
-        ):
-            self.preset_status_output.setText("Selecciona un preset para eliminar.")
-            return
-
-        try:
-            remove_preset(selected_preset_name)
-            self.preset_status_output.setText(
-                f"Preset '{selected_preset_name}' eliminado."
-            )
-            self._load_and_populate_presets()  # Refresh combobox
-        except Exception as e:
-            self.preset_status_output.setText(f"Error al eliminar preset: {e}")
+    def _apply_preset_from_selector(self, name: str, pipeline: list):
+        self.pipeline_manager.set_pipeline_from_config(pipeline)
+        self.image_processor.set_pipeline(pipeline)
+        self.show_status_message(f"Preset '{name}' aplicado.")
 
     def closeEvent(self, event):
         """
@@ -571,10 +496,10 @@ class MainWindow(QMainWindow):
             self.processing_worker.stop()
             self.processing_worker.wait()
             print("MainWindow: Processing worker stopped.")
-        if self.llm_thread and self.llm_thread.isRunning():
-            print("MainWindow: Stopping LLM thread...")
-            self.llm_thread.quit()
-            self.llm_thread.wait()
-            print("MainWindow: LLM thread stopped.")
+        #        if self.llm_thread and self.llm_thread.isRunning():
+        #            print("MainWindow: Stopping LLM thread...")
+        #            self.llm_thread.quit()
+        #            self.llm_thread.wait()
+        #            print("MainWindow: LLM thread stopped.")
         print("MainWindow: All threads stopped.")
         event.accept()

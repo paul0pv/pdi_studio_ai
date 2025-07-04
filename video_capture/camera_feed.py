@@ -6,6 +6,7 @@ from PyQt6.QtCore import QThread, pyqtSignal, QMutex  # Import QMutex for thread
 
 
 class CameraFeed(QThread):
+    # Keep the last frame
     # Define a signal that will emit a NumPy array (the captured frame)
     frame_ready = pyqtSignal(np.ndarray)
 
@@ -24,6 +25,7 @@ class CameraFeed(QThread):
         )
         self._capturing = True  # Flag to control frame capturing within the loop
         self._mutex = QMutex()  # Mutex for _capturing flag access
+        self._latest_frame = None
 
     def run(self):
         """
@@ -49,6 +51,8 @@ class CameraFeed(QThread):
                 ret, frame = self.cap.read()  # Read a frame from the camera
 
                 if ret:
+                    self._latest_frame = frame.copy()  # Guardar copia del frame
+                    self.frame_ready.emit(frame)
                     # If frame is successfully read, emit it through the signal
                     self.frame_ready.emit(frame)
                 else:
@@ -95,3 +99,7 @@ class CameraFeed(QThread):
         self._capturing = True
         self._mutex.unlock()
         print("CameraFeed: Capture loop resumed.")
+
+    def get_latest_frame(self):
+        """Devuelve el último frame capturado (puede ser None si aún no hay)."""
+        return self._latest_frame

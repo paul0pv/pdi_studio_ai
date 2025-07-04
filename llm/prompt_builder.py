@@ -1,43 +1,58 @@
-# prompt_builder.py
+# llm/prompt_builder.py
 
+from typing import Dict, Any
 
-def build_prompt(user_query: str, filtered_metadata: dict) -> str:
-    filters_descriptions = []
-    for name, metadata in filtered_metadata.items():
-        param_lines = []
-        for param_name, param in metadata.get("params", {}).items():
-            param_lines.append(
-                f"{param_name}: {param['label']} ({param['type']}, default={param['default']}, range={param['range']})"
-            )
-        param_text = (
-            "\n    " + "\n    ".join(param_lines)
-            if param_lines
-            else "    Sin parámetros configurables"
-        )
-        filters_descriptions.append(
-            f"{name}:\n  Descripción: {metadata['description']}\n  Parámetros:{param_text}"
-        )
-
-    filters_block = "\n\n".join(filters_descriptions)
-
-    prompt = f"""
-Tu tarea es generar un JSON que contenga los filtros adecuados a partir de la siguiente petición del usuario.
-
-Reglas:
-- Usa solo los nombres de filtros disponibles.
-- La salida debe tener este formato:
-
-{{
+EXAMPLES = """
+Ejemplo 1:
+Usuario: Quiero un estilo pop art con colores saturados y bordes definidos.
+Respuesta:
+{
   "filters_identified": [
-    {{ "name": "apply_gaussian_blur", "ksize": 9 }},
-    {{ "name": "convert_to_grayscale" }}
+    {"name": "adjust_saturation", "intensity": 80},
+    {"name": "adjust_brightness_contrast", "contrast": 30},
+    {"name": "invert_colors"}
   ]
-}}
+}
 
-Filtros disponibles:
-{filters_block}
-
-Petición del usuario: {user_query}
+Ejemplo 2:
+Usuario: Me gustaría una imagen suave y minimalista en blanco y negro.
+Respuesta:
+{
+  "filters_identified": [
+    {"name": "convert_to_grayscale"},
+    {"name": "apply_gaussian_blur", "kernel_size": 5}
+  ]
+}
 """
 
-    return prompt.strip()
+
+def build_prompt(user_query: str, metadata: Dict[str, Any]) -> str:
+    filter_descriptions = []
+    for name, meta in metadata.items():
+        desc = meta.get("description", "")
+        params = meta.get("params", {})
+        param_str = ", ".join(
+            f"{k} ({v.get('type', 'valor')})" for k, v in params.items()
+        )
+        if param_str:
+            filter_descriptions.append(f"- {name}: {desc}. Parámetros: {param_str}")
+        else:
+            filter_descriptions.append(f"- {name}: {desc}.")
+
+    filters_text = "\n".join(filter_descriptions)
+
+    system_prompt = f"""
+Eres un asistente experto en procesamiento de imágenes. Tu tarea es analizar una descripción en lenguaje natural y devolver una lista de filtros de imagen que se deben aplicar, en formato JSON.
+
+Solo debes usar los filtros disponibles que se listan a continuación. Cada filtro puede tener parámetros opcionales. Si no se especifican, usa valores por defecto razonables.
+
+Filtros disponibles:
+{filters_text}
+
+Formato de respuesta esperado:
+{EXAMPLES}
+
+Ahora responde a la siguiente solicitud del usuario:
+"""
+
+    return system_prompt.strip()
