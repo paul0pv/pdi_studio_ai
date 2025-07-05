@@ -44,7 +44,7 @@ PDI Studio AI es una plataforma interactiva para aplicar, diseñar y automatizar
 ## 🧩 Arquitectura General
 
 ```Mermaid
-graph TD
+flowchart TD
     A[Usuario] -->|Prompt o UI| B[MainWindow]
     B --> C[PipelineManager]
     B --> D[ImageProcessor]
