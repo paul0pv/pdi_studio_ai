@@ -5,6 +5,7 @@ import numpy as np
 from processing import filters
 import copy
 from typing import List, Dict, Any
+from processing.validation import validate_filter_params
 
 
 class ImageProcessor:

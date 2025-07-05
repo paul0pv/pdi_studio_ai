@@ -118,19 +118,6 @@ class FilterControl(QGroupBox):
         spinbox = None
         slider = None
 
-        #must_be_odd = param_info.get("must_be_odd", False)
-
-#        if must_be_odd:
-#            def enforce_odd(val):
-#                return val if val % 2 == 1 else val + 1
-#
-#            slider.valueChanged.connect(
-#                lambda val, sbox=spinbox: sbox.setValue(enforce_odd(val))
-#            )
-#            spinbox.valueChanged.connect(
-#                lambda val, sld=slider: sld.setValue(enforce_odd(val))
-#            )
-
         if param_info["type"] == "int_slider":
             spinbox = QSpinBox()
             spinbox.setRange(int(min_val), int(max_val))
@@ -187,14 +174,6 @@ class FilterControl(QGroupBox):
 
     def _on_param_changed(self, param_name: str, value):
         """Updates the current_params and emits the signal when a parameter changes."""
-#        param_info = self.filter_metadata["params"].get(param_name, {})
-#        min_val, max_val = param_info.get("range", (None, None))
-#        if min_val is not None and max_val is not None:
-#            value = max(min_val, min(value, max_val))
-#
-#        if param_info.get("must_be_odd", False):
-#            value = value if value % 2 == 1 else value + 1
-        
         self.current_params[param_name] = value
         # Emit signal with current filter name, updated parameters, and its index
         # The 'enabled' state is NOT part of current_params here, but will be added by get_filter_config
@@ -230,9 +209,6 @@ class FilterControl(QGroupBox):
                 current_value = self.current_params.get(
                     param_name, param_info["default"]
                 )
-
-                #if current_value < param_info["range"][0] or current_value > param_info["range"][1]:
-                #    current_value = param_info["default"]
 
                 if param_info["type"] == "int_slider":
                     spinbox.setValue(int(current_value))

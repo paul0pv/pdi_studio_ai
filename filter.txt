@@ -264,7 +264,6 @@ FILTER_METADATA = {
                 "range": (1, 99, 2),  # Odd numbers only
                 "default": 5,
                 "label": "Kernel Size (Odd)",
-#                "must_be_odd": True
             }
         },
     },
@@ -274,10 +273,9 @@ FILTER_METADATA = {
         "params": {
             "ksize": {
                 "type": "int_slider",
-                "range": (1, 31, 2),  # Odd numbers only
+                "range": (1, 99, 2),  # Odd numbers only
                 "default": 5,
                 "label": "Kernel Size (Odd)",
-                #"must_be_odd": True
             }
         },
     },
@@ -338,7 +336,6 @@ FILTER_METADATA = {
                 "range": (1, 15, 2),
                 "default": 3,
                 "label": "Kernel Size (Odd)",
-                #                "must_be_odd": True
             },
             "scale": {
                 "type": "float_slider",
@@ -381,14 +378,12 @@ FILTER_METADATA = {
                 "range": (1, 15, 2),  # Must be odd
                 "default": 7,
                 "label": "Tamaño Ventana Plantilla",
-                #"must_be_odd": True
             },
             "search_window_size": {
                 "type": "int_slider",
                 "range": (1, 31, 2),  # Must be odd
                 "default": 21,
                 "label": "Tamaño Ventana Búsqueda",
-                #"must_be_odd": True
             },
         },
     },
@@ -406,7 +401,6 @@ FILTER_METADATA = {
                 "range": (1, 49, 2),  # Must be odd
                 "default": 15,
                 "label": "Intensidad de Desenfoque",
-                #"must_be_odd": True
             },
             "center_x": {
                 "type": "float_slider",
