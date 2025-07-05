@@ -1,208 +1,267 @@
-# 🎨 PDI Studio AI
+# 🎨 **PDI Studio AI**
 
-Estudio de Procesamiento Digital de Imágenes (PDI) en Tiempo Real con IA
+**_Plataforma modular de procesamiento digital de imágenes en tiempo real, asistida por IA generativa local._**
 
-Este es un estudio de procesamiento digital de imágenes en tiempo real, potenciado por un Modelo de Lenguaje Grande (LLM) local. La aplicación permite a los usuarios aplicar una variedad de filtros de imagen a un feed de cámara en vivo o a imágenes cargadas, con la capacidad única de generar pipelines de procesamiento complejas utilizando lenguaje natural.
+## 🧠 Visión General
+PDI Studio AI es una plataforma interactiva para aplicar, diseñar y automatizar pipelines de procesamiento digital de imágenes (PDI) en tiempo real. Integra un modelo de lenguaje local (LLM) para generar secuencias de filtros a partir de descripciones en lenguaje natural, y permite al usuario ajustar cada etapa visualmente. Su arquitectura modular permite extenderlo fácilmente a sistemas embebidos, robótica o aplicaciones industriales.
+
+---
 
 ## ✨ Características Principales
 
-Procesamiento de Imágenes en Tiempo Real: Aplica filtros a un feed de cámara en vivo, observando los resultados instantáneamente.
+### Procesamiento de Imágenes en Tiempo Real
+- Aplica filtros secuenciales a un feed de cámara en vivo o imágenes cargadas.
+- Visualiza los resultados instantáneamente con histogramas y controles dinámicos.
 
-Generación de Pipelines con IA (LLM Local): Describe el efecto de imagen deseado en lenguaje natural, y un LLM local generará una secuencia de filtros (pipeline) para lograrlo.
+### Generación de Pipelines con LLM Local
+- Describe el estilo o efecto deseado en lenguaje natural.
+- El modelo Phi-3-mini genera automáticamente una secuencia de filtros.
+- Incluye fallback inteligente por estilo o reglas predefinidas si el modelo falla.
+    - Por estilo detectado (ej. “minimalismo”)
+    - Por coincidencia exacta con reglas predefinidas
 
-Gestión de Pipelines Flexible:
+### Gestión Visual de Pipelines
+- Añade, elimina, reordena y ajusta filtros desde una interfaz gráfica.
+- Controla parámetros con sliders validados (rango, imparidad, tipo).
+- Activa o desactiva filtros individualmente.
 
-  - Añade y elimina filtros de la pipeline.
+### Validación y Robustez
+- Todos los parámetros son validados automáticamente según su metadata.
+- Se evita el uso de valores inválidos (por ejemplo, kernels pares).
+- El sistema detecta y corrige errores silenciosos en tiempo real.
 
-  - Modifica los parámetros de los filtros individualmente mediante controles deslizantes e inputs numéricos.
+### Asistencia Visual y Análisis
+- Visualización de histograma de la imagen procesada.
+- Captura de pantalla del resultado.
+- Indicadores visuales si se usó fallback o si un filtro falló.
 
-  - Activa o desactiva filtros específicos en la pipeline.
+### Presets y Reglas
+- Guarda pipelines como presets reutilizables.
+- Incluye reglas predefinidas para estilos comunes ("blanco y negro", "efecto cómic", etc.).
 
-Previsualización y Análisis:
+---
 
-  - Visualiza el histograma de la imagen procesada para comprender mejor la distribución de píxeles.
+## 🧩 Arquitectura General
 
-  - Guarda capturas de pantalla de la imagen procesada.
+```Mermaid
+graph TD
+    A[Usuario] -->|Prompt o UI| B[MainWindow]
+    B --> C[PipelineManager]
+    B --> D[ImageProcessor]
+    B --> E[LLMWorker]
+    C --> D
+    E --> C
+    D --> F[ImageProcessingWorker]
+    F --> G[Feed de Cámara / Imagen]
+    G --> D
+```
 
-Gestión de Presets:
+- El usuario puede construir pipelines manualmente o describirlos en lenguaje natural.
 
-  - Guarda tus pipelines de filtros favoritas como presets para su uso futuro.
+- El modelo LLM genera filtros que se validan y aplican en tiempo real.
 
-  - Carga y elimina presets existentes.
+- El procesamiento se ejecuta en hilos separados para mantener la UI fluida.
 
-Interfaz de Usuario Intuitiva: Desarrollada con PyQt6 para una experiencia de usuario fluida y reactiva.
+---
+
+## 🎛️ Filtros Disponibles
+
+| Filtro	| Descripción | Parámetros |
+|-----------|-------------|------------|
+|convert_to_grayscale | Escala de grises | — |
+|invert_colors	| Negativo de imagen	| — |
+|apply_gaussian_blur	| Suavizado gaussiano	| ksize (impar) |
+|apply_median_blur	| Filtro de mediana	| ksize (impar) |
+|apply_canny_edge_detection	| Detección de bordes	| low_threshold, high_threshold |
+|adjust_brightness_contrast	| Brillo y contraste	| alpha, beta |
+|sepia_tint	| Tono sepia	| strength |
+|apply_laplacian_sharpen	| Realce de bordes	| alpha |
+|adjust_saturation	| Saturación HSV	| saturation_factor|
+|non_local_means_denoising	| Reducción de ruido	| h, h_color, template_window_size, search_window_size|
+|bokeh_effect	| Desenfoque radial	| ksize, center_x, center_y, radius |
 
 ## 🚀 Cómo Empezar
 
-Sigue estos pasos para configurar y ejecutar PDI Studio AI en tu máquina local.
+### Requisitos
 
-Requisitos
+- Python 3.8 o superior
+- Una webcam (opcional)
+- Al menos 4 GB de RAM (recomendado para LLM en CPU)
+- GPU NVIDIA (opcional, para acelerar el modelo LLM)
 
-  - Python 3.8 o superior
-
-  - Pip (gestor de paquetes de Python)
-
-  - Una webcam (opcional, si deseas usar el feed en vivo)
-
-  - Suficiente RAM y/o VRAM para el modelo LLM (al menos 4GB de RAM son recomendables para el Phi-3-mini-4k-instruct-q4.gguf en CPU, más para GPU).
+---
 
 ## ⚙️ Instalación
 
-Clona el repositorio:
-
-```Bash
+```bash
 git clone https://github.com/paul0pv/pdi_studio_ai.git
 cd pdi_studio_ai
-``` 
-
-(Asegúrate de reemplazar tu-usuario con tu nombre de usuario de GitHub si lo subes a tu cuenta personal).
-
-Crea y activa un entorno virtual (recomendado):
-
-```Bash
 python -m venv venv
-# En Windows:
-.\venv\Scripts\activate
-# En macOS/Linux:
-source venv/bin/activate
-```
 
-Instala las dependencias de Python:
+# MacOS/Linux:
+source venv/bin/activate  
+# Windows: 
+.\venv\Scripts\activate en Windows
 
-```Bash
 pip install -r requirements.txt
 ```
 
-Si tienes una GPU NVIDIA y quieres usarla para el LLM, instala llama-cpp-python con soporte CUDA:
+### Soporte para GPU (opcional)
 
-```Bash
-pip uninstall llama-cpp-python # Desinstala la versión solo CPU si ya está instalada
+```bash
+pip uninstall llama-cpp-python
 pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
 ```
 
-(Asegúrate de que cu121 coincida con tu versión de CUDA. Consulta la documentación de llama-cpp-python para más detalles si tu versión de CUDA es diferente).
+### Descargar el modelo LLM
 
-Descarga el modelo LLM:
-PDI Studio AI utiliza el modelo Phi-3-mini-4k-instruct-q4.gguf. Debes descargarlo manualmente y colocarlo en la carpeta models/ dentro del directorio raíz del proyecto.
+  - Modelo: Phi-3-mini-4k-instruct-q4.gguf
 
-Descarga el modelo desde Hugging Face:
-  microsoft/Phi-3-mini-4k-instruct-gguf - Phi-3-mini-4k-instruct-q4.gguf
+  - Fuente: Hugging Face → microsoft/Phi-3-mini-4k-instruct-gguf
 
-Crea el directorio models si no existe:
-
-```Bash
+```bash
 mkdir -p models
 ```
-
-Coloca el archivo Phi-3-mini-4k-instruct-q4.gguf dentro de la carpeta models.
-La ruta final del modelo debería ser pdi_studio_ai/models/Phi-3-mini-4k-instruct-q4.gguf.
+#### Coloca el archivo .gguf dentro de models/
 
 ## ▶️ Ejecución
 
-Una vez que hayas instalado todas las dependencias y descargado el modelo LLM, puedes ejecutar la aplicación:
-
-```Bash
+```bash
 python main.py
 ```
 
 ## 📂 Estructura del Proyecto
 
+```bash
 pdi_studio_ai/
+├── config/                                # Presets y configuraciones
+│   ├──  __init__.py  
+│   ├── preset_meta.py  
+│   └── presets.py  
+├── llm/  
+│   ├── client.py  
+│   ├── __init__.py  
+│   ├── llm_worker.py                       # Hilo para ejecución del modelo
+│   ├── parser.py  
+│   ├── pipeline_generator.py               # Generación de pipelines con fallback
+│   ├── prompt_builder.py  
+│   └── utils.py  
+├── models/                                 # Modelos LLM (.gguf)
+├── processing/  
+│   ├── filters.py                          # Filtros y metadatos
+│   ├── image_processing_worker.py          # Hilo para procesamiento de imágenes en segundo plano.
+│   ├── image_processor.py                  # Aplicación de pipelines
+│   ├── __init__.py  
+│   ├── predefined_pipelines.py             # Reglas por texto
+│   ├── semantic_classifier.py              
+│   ├── utils.py  
+│   └── validation.py                       # Validación de parámetros
+├── resources/  
+│   ├── icons/  
+│   └── loading_spinner.gif  
+├── styles/  
+│   └── dark_theme.qss  
+├── tests/  
+│   ├── conf_test.py  
+│   ├──test_camera_feed.py  
+│   ├── test_filters2.py  
+│   ├── test_filters.py  
+│   ├── test_full_pipeline.py  
+│   ├── test_histogram_plotter.py  
+│   ├── test_image_processor.py  
+│   ├── test_llm_integrator.py  
+│   ├── test_pipeline_generator.py  
+│   ├── test_presets.py  
+│   ├── test_prompt_builder.py  
+│   └── test_semantic_classifier.py  
+├── ui/  
+│   ├── widgets/  
+│   │   ├── favorites_tab.py  
+│   │   ├── filter_control.py           # Widget para controlar un filtro individual (parámetros, habilitar/deshabilitar).
+│   │   ├── filter_selector.py          # Widget para seleccionar y añadir nuevos filtros a la pipeline.
+│   │   ├── histogram_plotter.py        # Widget para mostrar el histograma de la imagen procesada.
+│   │   ├── __init__.py  
+│   │   ├── pipeline_manager.py         # Widget para gestionar la lista de filtros en la pipeline (reordenar, eliminar).
+│   │   ├── preset_selector.py  
+│   │   ├── preview_window.py  
+│   │   └── style_input_preview.py  
+│   ├── __init__.py  
+│   ├── main_window.py                  # La ventana principal de la aplicación PyQt6.
+│   └── main_window.py.bak  
+├── video_capture/  
+│   ├── camera_feed.py                  # Clase para manejar la captura de video de la cámara.
+│   ├── camera_utils.py  
+│   └── __init__.py  
+├── demo_ai_pipeline.py                 # Script para testear el comportamiento de un modelo
+├── filter_control.txt  
+├── filter.txt  
+├── main.py                             # Punto de entrada principal de la aplicación.
+├── README.md  
+└── requirements.txt                    # Dependencias de Python.
+```
 
-├── main.py                     # Punto de entrada principal de la aplicación.
+## 🛠️ Funcionalidades Avanzadas
 
-├── requirements.txt            # Dependencias de Python.
+### Procesamiento en hilos separados (imagen y LLM)
+| Hilo	| Función |
+|-------|---------|
+| ImageProcessingWorker	| Aplica filtros a cada frame |
+| LLMWorker | Ejecuta el modelo de lenguaje y genera pipelines |
+| UI Principal	| Control de interfaz y eventos |
 
-├── .gitignore                  # Archivos y directorios ignorados por Git.
+- Fallback automático si el modelo falla
 
-├── models/                     # Directorio para modelos LLM (ej. Phi-3-mini-4k-instruct-q4.gguf).
+- Test de filtros con validación automática
 
-├── config/
+- Selector de cámara dinámico
 
-│   └── presets.json            # Archivo JSON para guardar y cargar presets de filtros.
-
-├── video_capture/
-
-│   └── camera_feed.py          # Clase para manejar la captura de video de la cámara.
-
-├── processing/
-
-│   ├── __init__.py
-
-│   ├── filters.py              # Definición de funciones de filtro y sus metadatos.
-
-│   ├── image_processor.py      # Aplica la pipeline de filtros a un frame de imagen.
-
-│   └── image_processing_worker.py # Hilo para procesamiento de imágenes en segundo plano.
-
-└── ui/
-
-    ├── __init__.py
-
-    ├── main_window.py          # La ventana principal de la aplicación PyQt6.
-
-    └── widgets/
-
-        ├── __init__.py
-
-        ├── filter_control.py   # Widget para controlar un filtro individual (parámetros, habilitar/deshabilitar).
-
-        ├── filter_selector.py  # Widget para seleccionar y añadir nuevos filtros a la pipeline.
-
-        ├── histogram_plotter.py # Widget para mostrar el histograma de la imagen procesada.
-
-        └── pipeline_manager.py  # Widget para gestionar la lista de filtros en la pipeline (reordenar, eliminar).
-
+- Editor visual de parámetros con validación en tiempo real
 
 ## 🛣️ Futuras Implementaciones
 
-Este proyecto es una base sólida, y hay muchas áreas para expandir y mejorar:
+### Nuevos Filtros
 
-Más Filtros y Efectos:
+  - Transformadas de Hough, operaciones morfológicas, segmentación por color
 
-  - Implementar una gama más amplia de filtros de OpenCV (ej. Transformada de Hough para detección de líneas/círculos, operaciones morfológicas, segmentación por color, etc.).
+  - Filtros en el dominio de la frecuencia (FFT, DCT)
 
-  - Añadir filtros avanzados o combinaciones predefinidas.
+### Mejora del LLM
 
-  - Soporte para máscaras y regiones de interés (ROI) para aplicar filtros solo a partes de la imagen.
+- Confirmación de parámetros atípicos
 
-Mejoras en la Interfaz de Usuario (UI):
+- Descripción automática de pipelines
 
-  - Arrastrar y Soltar (Drag & Drop): Implementar la funcionalidad de arrastrar y soltar para reordenar filtros en el PipelineManager de manera más intuitiva.
+- Historial de prompts y respuestas
 
-  - Vista Previa en Tiempo Real (Thumbnails): Mostrar una pequeña miniatura de la imagen después de cada filtro en la pipeline para depuración visual.
+### UI Avanzada
 
-  - Interfaz de Ajuste Fino: Una forma más interactiva de ajustar parámetros, tal vez con feedback visual en tiempo real en un pequeño área de vista previa.
+- Miniaturas por filtro
 
-  - Temas Oscuros/Claros: Opciones para personalizar la apariencia de la interfaz.
+- Drag & Drop para reordenar
 
-Capacidades del LLM:
+- Vista previa por etapa
 
-  - "Undo" y "Redo" de Peticiones LLM: Permitir al usuario iterar y refinar las sugerencias del LLM.
+### Despliegue en Robots/Drones
 
-  - Confirmación de Parámetros: Si el LLM sugiere parámetros inusuales, pedir confirmación al usuario o resaltar los valores atípicos.
+- Compatible con Raspberry Pi, Jetson Nano, Coral TPU
 
-  - Generación de Descripción de Pipelines: Permitir al LLM generar una descripción en lenguaje natural de una pipeline de filtros existente.
+- Pipelines predefinidos o generados remotamente
 
-  - Manejo de Errores Semánticos: Mejorar la capacidad del LLM para interpretar peticiones complejas o ambiguas y pedir aclaraciones.
+- Comunicación por MQTT/WebSocket para actualización dinámica
 
-Carga y Guardado de Imágenes/Videos:
+- Ideal para navegación visual, inspección o agricultura de precisión
 
-  - Permitir cargar archivos de imagen y video desde el disco para su procesamiento, no solo el feed de la cámara.
+## 🧠 Aplicaciones Prácticas
 
-  - Funcionalidad para guardar videos procesados.
+| Sector | Aplicación |
+---------|------------|
+| Audiovisual | Estilización y corrección visual automatizada |
+| Robótica | Preprocesamiento visual para navegación o inspección |
+| Educación | Enseñanza interactiva de PDI |
+| Gobierno | Restauración de imágenes históricas, vigilancia |
+| Industria | Inspección visual, detección de defectos |
 
-Optimización y Rendimiento:
+## 📜 Licencia
 
-  - Explorar el uso de GPGPU (CUDA/OpenCL) para el procesamiento de imágenes para un rendimiento aún mayor, especialmente con resoluciones altas.
-
-  - Optimización de la comunicación entre hilos para reducir la latencia.
-
-Funcionalidades Adicionales:
-
-  - Anotaciones: Herramientas para dibujar o añadir texto a la imagen procesada.
-
-  - Calibración de Cámara: Opciones básicas de calibración (brillo, contraste, saturación, etc.) si la cámara lo soporta.
-
-  - Benchmarks: Herramientas para medir el rendimiento de la pipeline y los filtros individuales.
+Este proyecto está licenciado bajo MIT. Puedes usarlo, modificarlo y distribuirlo libremente.
 
