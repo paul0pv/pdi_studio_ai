@@ -26,9 +26,19 @@ Respuesta:
 """
 
 
-def build_prompt(user_query: str, metadata: Dict[str, Any]) -> str:
+def build_prompt(
+    user_query: str,
+    metadata: Dict[str, Any],
+    max_filters: int = 25,
+    verbose: bool = False,
+) -> str:
+    if not metadata:
+        raise ValueError("FILTER_METADATA está vacío o no fue cargado correctamente.")
+
     filter_descriptions = []
-    for name, meta in metadata.items():
+    for i, (name, meta) in enumerate(metadata.items()):
+        if i >= max_filters:
+            break
         desc = meta.get("description", "")
         params = meta.get("params", {})
         param_str = ", ".join(
@@ -61,7 +71,14 @@ Ejemplo de respuesta válida:
   ]
 }}
 
+{EXAMPLES.strip()}
+
 Ahora responde a esta solicitud del usuario:
 "{user_query}"
-"""
-    return system_prompt.strip()
+""".strip()
+
+    if verbose:
+        print("[PromptBuilder] Prompt generado:")
+        print(system_prompt)
+
+    return system_prompt

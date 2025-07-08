@@ -1,0 +1,7 @@
+llama-cpp-python
+sentence-transformers
+#transformers>=4.40.0
+#torch>=2.1.0
+#sentencepiece
+#accelerate
+#gguf>=0.1.0  # si se usa un backend compatible con GGUF

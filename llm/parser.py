@@ -2,61 +2,69 @@
 
 import json
 from typing import List, Dict, Any, Optional
+from processing.validation import validate_filter_params
 
 
 def parse_llm_response(
-    raw_response: str, metadata: Dict[str, Any]
+    raw_response: str, metadata: Dict[str, Any], verbose: bool = True
 ) -> Optional[List[Dict[str, Any]]]:
+    """
+    Parsea la respuesta JSON generada por el LLM y la convierte en un pipeline válido.
+    """
     try:
-        # Limpieza si viene con bloques ```json
+        # Limpieza de delimitadores Markdown
         if raw_response.startswith("```json") and raw_response.endswith("```"):
             raw_response = raw_response[7:-3].strip()
         elif raw_response.startswith("```") and raw_response.endswith("```"):
             raw_response = raw_response[3:-3].strip()
 
         if not raw_response.strip():
-            print("[Parser] Respuesta vacía del modelo.")
+            if verbose:
+                print("[Parser] Respuesta vacía del modelo.")
             return None
 
         if not raw_response.strip().startswith("{"):
-            print("[Parser] Respuesta no parece ser JSON.")
-            print("Contenido recibido:", raw_response)
+            if verbose:
+                print("[Parser] Respuesta no parece ser JSON.")
+                print("Contenido recibido:", raw_response)
             return None
+
         parsed_json = json.loads(raw_response)
         filters_list = parsed_json.get("filters_identified")
 
         if not isinstance(filters_list, list):
-            print("[Parser] JSON inválido o incompleto.")
+            if verbose:
+                print("[Parser] JSON inválido o campo 'filters_identified' ausente.")
             return None
 
         final_pipeline = []
         for item in filters_list:
             if not isinstance(item, dict) or "name" not in item:
+                if verbose:
+                    print(f"[Parser] Entrada inválida: {item}")
                 continue
+
             name = item["name"]
             if name not in metadata:
+                if verbose:
+                    print(f"[Parser] Filtro '{name}' no reconocido. Omitido.")
                 continue
 
-            metadata_params = metadata[name].get("params", {})
-            valid_params = {}
-            for param_key, param_value in item.items():
-                if param_key == "name":
-                    continue
-                expected_type = metadata_params.get(param_key, {}).get("type")
-                try:
-                    if expected_type == "int_slider":
-                        valid_params[param_key] = int(param_value)
-                    elif expected_type == "float_slider":
-                        valid_params[param_key] = float(param_value)
-                    else:
-                        valid_params[param_key] = param_value
-                except Exception:
-                    continue
-
+            valid_params = validate_filter_params(name, item)
             final_pipeline.append({"name": name, "params": valid_params})
 
-        return final_pipeline if final_pipeline else None
+        if not final_pipeline:
+            if verbose:
+                print("[Parser] No se extrajo ningún filtro válido.")
+            return None
 
+        return final_pipeline
+
+    except json.JSONDecodeError as e:
+        if verbose:
+            print(f"[Parser] Error de decodificación JSON: {e}")
+        return None
     except Exception as e:
-        print(f"[Parser] Error procesando la respuesta del LLM: {e}")
+        if verbose:
+            print(f"[Parser] Error inesperado: {e}")
         return None

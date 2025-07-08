@@ -1,24 +1,30 @@
-# 🎨 **PDI Studio AI**
+# 🎨 PDI Studio AI
 
-**_Plataforma modular de procesamiento digital de imágenes en tiempo real, asistida por IA generativa local._**
+[![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/status-active-brightgreen.svg)]()
+[![LLM: Phi-3-mini](https://img.shields.io/badge/LLM-Phi--3--mini-blueviolet)](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf)
+
+> **_Plataforma modular de procesamiento digital de imágenes en tiempo real, asistida por IA generativa local._**
+
+---
 
 ## 🧠 Visión General
-PDI Studio AI es una plataforma interactiva para aplicar, diseñar y automatizar pipelines de procesamiento digital de imágenes (PDI) en tiempo real. Integra un modelo de lenguaje local (LLM) para generar secuencias de filtros a partir de descripciones en lenguaje natural, y permite al usuario ajustar cada etapa visualmente. Su arquitectura modular permite extenderlo fácilmente a sistemas embebidos, robótica o aplicaciones industriales.
+
+PDI Studio AI es una plataforma interactiva para diseñar, aplicar y automatizar pipelines de procesamiento digital de imágenes (PDI) en tiempo real. Integra un modelo de lenguaje local (LLM) para generar secuencias de filtros a partir de descripciones en lenguaje natural, y permite al usuario ajustar cada etapa visualmente. Su arquitectura modular permite extenderlo fácilmente a sistemas embebidos, robótica o aplicaciones industriales.
 
 ---
 
 ## ✨ Características Principales
 
 ### Procesamiento de Imágenes en Tiempo Real
-- Aplica filtros secuenciales a un feed de cámara en vivo o imágenes cargadas.
-- Visualiza los resultados instantáneamente con histogramas y controles dinámicos.
+- Aplica filtros secuenciales a un feed de cámara.
+- Visualiza resultados instantáneamente con histogramas, métricas y vista de diferencia.
 
 ### Generación de Pipelines con LLM Local
 - Describe el estilo o efecto deseado en lenguaje natural.
 - El modelo Phi-3-mini genera automáticamente una secuencia de filtros.
-- Incluye fallback inteligente por estilo o reglas predefinidas si el modelo falla.
-    - Por estilo detectado (ej. “minimalismo”)
-    - Por coincidencia exacta con reglas predefinidas
+- Fallback inteligente por estilo o reglas predefinidas si el modelo falla.
 
 ### Gestión Visual de Pipelines
 - Añade, elimina, reordena y ajusta filtros desde una interfaz gráfica.
@@ -31,9 +37,10 @@ PDI Studio AI es una plataforma interactiva para aplicar, diseñar y automatizar
 - El sistema detecta y corrige errores silenciosos en tiempo real.
 
 ### Asistencia Visual y Análisis
-- Visualización de histograma de la imagen procesada.
-- Captura de pantalla del resultado.
-- Indicadores visuales si se usó fallback o si un filtro falló.
+- Histograma interactivo con pyqtgraph (modo RGB o escala de grises).
+- Vista de diferencia absoluta entre imagen original y procesada.
+- Métricas en tiempo real: PSNR, SSIM, diferencia absoluta.
+- Panel desacoplable y colapsable para análisis visual.
 
 ### Presets y Reglas
 - Guarda pipelines como presets reutilizables.
@@ -54,6 +61,7 @@ flowchart TD
     D --> F[ImageProcessingWorker]
     F --> G[Feed de Cámara / Imagen]
     G --> D
+    D --> H[HistogramPanel]
 ```
 
 - El usuario puede construir pipelines manualmente o describirlos en lenguaje natural.
@@ -79,6 +87,9 @@ flowchart TD
 |adjust_saturation	| Saturación HSV	| saturation_factor|
 |non_local_means_denoising	| Reducción de ruido	| h, h_color, template_window_size, search_window_size|
 |bokeh_effect	| Desenfoque radial	| ksize, center_x, center_y, radius |
+|equalize_histogram	| Ecualización de histograma |	— |
+|apply_sobel_edge_detection | Detección de bordes (Sobel) | — |
+|apply_lowpass_fft	| Filtro pasa bajos en frecuencia	| cutoff |
 
 ## 🚀 Cómo Empezar
 
@@ -121,8 +132,9 @@ pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-c
 
 ```bash
 mkdir -p models
+# Coloca el archivo .gguf dentro de models/
+
 ```
-#### Coloca el archivo .gguf dentro de models/
 
 ## ▶️ Ejecución
 
@@ -134,88 +146,42 @@ python main.py
 
 ```bash
 pdi_studio_ai/
-├── config/                                # Presets y configuraciones
-│   ├──  __init__.py  
-│   ├── preset_meta.py  
-│   └── presets.py  
-├── llm/  
-│   ├── client.py  
-│   ├── __init__.py  
-│   ├── llm_worker.py                       # Hilo para ejecución del modelo
-│   ├── parser.py  
-│   ├── pipeline_generator.py               # Generación de pipelines con fallback
-│   ├── prompt_builder.py  
-│   └── utils.py  
-├── models/                                 # Modelos LLM (.gguf)
-├── processing/  
-│   ├── filters.py                          # Filtros y metadatos
-│   ├── image_processing_worker.py          # Hilo para procesamiento de imágenes en segundo plano.
-│   ├── image_processor.py                  # Aplicación de pipelines
-│   ├── __init__.py  
-│   ├── predefined_pipelines.py             # Reglas por texto
-│   ├── semantic_classifier.py              
-│   ├── utils.py  
-│   └── validation.py                       # Validación de parámetros
-├── resources/  
-│   ├── icons/  
-│   └── loading_spinner.gif  
-├── styles/  
-│   └── dark_theme.qss  
-├── tests/  
-│   ├── conf_test.py  
-│   ├──test_camera_feed.py  
-│   ├── test_filters2.py  
-│   ├── test_filters.py  
-│   ├── test_full_pipeline.py  
-│   ├── test_histogram_plotter.py  
-│   ├── test_image_processor.py  
-│   ├── test_llm_integrator.py  
-│   ├── test_pipeline_generator.py  
-│   ├── test_presets.py  
-│   ├── test_prompt_builder.py  
-│   └── test_semantic_classifier.py  
-├── ui/  
-│   ├── widgets/  
-│   │   ├── favorites_tab.py  
-│   │   ├── filter_control.py           # Widget para controlar un filtro individual (parámetros, habilitar/deshabilitar).
-│   │   ├── filter_selector.py          # Widget para seleccionar y añadir nuevos filtros a la pipeline.
-│   │   ├── histogram_plotter.py        # Widget para mostrar el histograma de la imagen procesada.
-│   │   ├── __init__.py  
-│   │   ├── pipeline_manager.py         # Widget para gestionar la lista de filtros en la pipeline (reordenar, eliminar).
-│   │   ├── preset_selector.py  
-│   │   ├── preview_window.py  
-│   │   └── style_input_preview.py  
-│   ├── __init__.py  
-│   ├── main_window.py                  # La ventana principal de la aplicación PyQt6.
-│   └── main_window.py.bak  
-├── video_capture/  
-│   ├── camera_feed.py                  # Clase para manejar la captura de video de la cámara.
-│   ├── camera_utils.py  
-│   └── __init__.py  
-├── demo_ai_pipeline.py                 # Script para testear el comportamiento de un modelo
-├── filter_control.txt  
-├── filter.txt  
-├── main.py                             # Punto de entrada principal de la aplicación.
-├── README.md  
-└── requirements.txt                    # Dependencias de Python.
+├── config/                  # Presets y configuraciones
+├── llm/                     # Generación de pipelines con LLM
+├── models/                  # Modelos LLM (.gguf)
+├── processing/              # Filtros, validación, procesamiento
+├── resources/               # Iconos y recursos visuales
+│   └── icons/
+├── styles/                  # Temas visuales
+├── tests/                   # Pruebas unitarias
+├── ui/
+│   ├── main_window/         # Componentes de la ventana principal
+│   └── widgets/             # Widgets reutilizables (histograma, filtros, presets)
+├── video_capture/           # Manejo de cámara
+└── main.py                  # Punto de entrada
 ```
 
 ## 🛠️ Funcionalidades Avanzadas
 
-### Procesamiento en hilos separados (imagen y LLM)
+### Procesamiento en hilos separados
 | Hilo	| Función |
 |-------|---------|
 | ImageProcessingWorker	| Aplica filtros a cada frame |
 | LLMWorker | Ejecuta el modelo de lenguaje y genera pipelines |
-| UI Principal	| Control de interfaz y eventos |
+| HistogramTask (QRunnable) | Calcula histograma y métricas sin bloquear la UI|
+|HistogramPanel	| Visualización interactiva con pyqtgraph |
+| Δ Imagen |	Comparación visual entre original y procesado |
+| Validación dinámica |	Rango, tipo, imparidad, etc. |
 
 - Fallback automático si el modelo falla
 
-- Test de filtros con validación automática
+- Validación dinámica de parámetros
 
-- Selector de cámara dinámico
+- Selector de cámara y presets reutilizables
 
-- Editor visual de parámetros con validación en tiempo real
+- Vista de diferencia absoluta (Δ imagen)
+
+- Panel desacoplable y colapsable
 
 ## 🛣️ Futuras Implementaciones
 
@@ -240,6 +206,8 @@ pdi_studio_ai/
 - Drag & Drop para reordenar
 
 - Vista previa por etapa
+
+- Comparación visual entre pipelines
 
 ### Despliegue en Robots/Drones
 

@@ -2,111 +2,99 @@
 
 import cv2
 import numpy as np
-from PyQt6.QtCore import QThread, pyqtSignal, QMutex  # Import QMutex for thread safety
+from PyQt6.QtCore import QThread, pyqtSignal, QMutex, QWaitCondition
 
 
 class CameraFeed(QThread):
-    # Keep the last frame
-    # Define a signal that will emit a NumPy array (the captured frame)
     frame_ready = pyqtSignal(np.ndarray)
 
-    def __init__(self, camera_index=1):
-        """
-        Initializes the CameraFeed thread.
-
-        Args:
-            camera_index (int): The index of the camera to use (e.g., 0 for default webcam).
-        """
+    def __init__(self, camera_index=1, max_retries=3, frame_delay_ms=10):
         super().__init__()
         self.camera_index = camera_index
-        self.cap = None  # OpenCV VideoCapture object
-        self._running = (
-            True  # Flag to control the thread's loop (overall thread activity)
-        )
-        self._capturing = True  # Flag to control frame capturing within the loop
-        self._mutex = QMutex()  # Mutex for _capturing flag access
+        self._mutex = QMutex()
+        self._condition = QWaitCondition()
+        self._running = True
+        self._capturing = True
         self._latest_frame = None
+        self.max_retries = max_retries
+        self.frame_delay_ms = frame_delay_ms
 
     def run(self):
-        """
-        This method is executed when the thread starts.
-        It continuously captures frames from the camera.
-        """
-        print(f"Attempting to open camera at index {self.camera_index}...")
-        self.cap = cv2.VideoCapture(self.camera_index)
-
-        if not self.cap.isOpened():
-            print(f"Error: Could not open camera at index {self.camera_index}.")
-            self._running = False  # Stop the thread if camera cannot be opened
-            # Optionally, emit an error signal here
-            return
-
-        print("Camera opened successfully. Starting frame capture loop...")
-        while self._running:
+        retry_count = 0
+        while self._running and retry_count < self.max_retries:
             self._mutex.lock()
-            is_capturing = self._capturing
+            if not self._capturing:
+                self._condition.wait(self._mutex)
             self._mutex.unlock()
 
-            if is_capturing:
-                ret, frame = self.cap.read()  # Read a frame from the camera
+            cap = cv2.VideoCapture(self.camera_index)
+            if not cap.isOpened():
+                print(
+                    f"[CameraFeed] ❌ No se pudo abrir la cámara {self.camera_index}. Reintentando..."
+                )
+                retry_count += 1
+                self.msleep(500)
+                continue
 
-                if ret:
-                    self._latest_frame = frame.copy()  # Guardar copia del frame
-                    self.frame_ready.emit(frame)
-                    # If frame is successfully read, emit it through the signal
-                    self.frame_ready.emit(frame)
-                else:
+            print(f"[CameraFeed] ✅ Cámara {self.camera_index} abierta correctamente.")
+            retry_count = 0  # Reset if correctly opened
+
+            while self._running:
+                self._mutex.lock()
+                capturing = self._capturing
+                self._mutex.unlock()
+
+                if not capturing:
+                    break
+
+                ret, frame = cap.read()
+                if not ret or frame is None:
                     print(
-                        "Warning: Could not read frame from camera. Attempting to re-open or stopping..."
+                        "[CameraFeed] ⚠️ Fallo al leer frame. Intentando reconectar..."
                     )
-                    if not self.cap.isOpened():
-                        self._running = False
-                        print("Camera lost connection. Stopping capture thread.")
-                    break  # Exit loop on persistent failure
-            else:
-                # If paused, sleep a bit longer to reduce CPU usage
-                self.msleep(100)  # Sleep for 100 milliseconds when paused
+                    break
 
-            # Give a small pause to allow other threads/events to process
-            # This can help reduce CPU usage and keep the UI responsive.
-            # Adjust based on desired frame rate and system performance.
-            # self.msleep(1) # This small sleep is mostly for active capture, moved to 'else' above
+                self._mutex.lock()
+                self._latest_frame = frame.copy()
+                self._mutex.unlock()
 
-        # Clean up resources when the loop finishes
-        if self.cap:
-            self.cap.release()
-        print("CameraFeed thread stopped.")
+                self.frame_ready.emit(frame)
+                self.msleep(self.frame_delay_ms)
+
+            cap.release()
+            self.msleep(100)
+
+        print(
+            "[CameraFeed] 🛑 Finalizado por máximo reintentos."
+            if retry_count >= self.max_retries
+            else "[CameraFeed] 🧩 Detenido por usuario."
+        )
 
     def stop(self):
-        """
-        Sets the internal flag to stop the thread's execution loop (terminates thread).
-        """
+        self._mutex.lock()
         self._running = False
-        # Do not wait() here, as it might cause a deadlock if called from main thread
-        # and the run loop is stuck or waiting for something.
-        # MainWindow.closeEvent should handle the wait().
+        self._condition.wakeAll()
+        self._mutex.unlock()
 
-    def stop_capture_loop(self):
-        """Pauses the frame capturing without stopping the thread entirely."""
+    def pause(self):
         self._mutex.lock()
         self._capturing = False
         self._mutex.unlock()
-        print("CameraFeed: Capture loop paused.")
 
-    def start_capture_loop(self):
-        """Resumes the frame capturing."""
+    def resume(self):
         self._mutex.lock()
         self._capturing = True
+        self._condition.wakeAll()
         self._mutex.unlock()
-        print("CameraFeed: Capture loop resumed.")
-
-    def get_latest_frame(self):
-        """Devuelve el último frame capturado (puede ser None si aún no hay)."""
-        return self._latest_frame
 
     def switch_camera(self, new_index: int):
-        if self.cap.isOpened():
-            self.cap.release()
-        self.cap = cv2.VideoCapture(new_index)
-        if not self.cap.isOpened():
-            raise RuntimeError(f"No se pudo abrir la cámara en el índice {new_index}")
+        print(f"[CameraFeed] 🔄 Cambiando a cámara {new_index}")
+        self.pause()
+        self.camera_index = new_index
+        self.resume()
+
+    def get_latest_frame(self):
+        self._mutex.lock()
+        frame = self._latest_frame.copy() if self._latest_frame is not None else None
+        self._mutex.unlock()
+        return frame

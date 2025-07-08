@@ -1,8 +1,11 @@
 opencv-python
 numpy
+pyqtgraph
 PyQt6
 matplotlib
+scikit-image
 llama-cpp-python
 pydantic
 pytest
 sentence-transformers
+pyinstaller

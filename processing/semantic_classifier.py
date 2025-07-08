@@ -1,11 +1,17 @@
-# semantic_classifier.py
+# processing/semantic_classifier.py
+
 from sentence_transformers import SentenceTransformer, util
+from typing import Dict, List, Tuple
 
-# Inicialización del modelo
-model = SentenceTransformer("all-MiniLM-L6-v2")
+# Model initialization
+try:
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+except Exception as e:
+    print(f"❌ Error al cargar el modelo de embeddings: {e}")
+    model = None
 
-# Diccionario de estilos con palabras clave semánticas
-STYLE_KEYWORDS = {
+# Dict of semantic keywords
+STYLE_KEYWORDS: Dict[str, List[str]] = {
     "pop_art": ["colores vibrantes", "saturado", "comic", "neón", "contraste alto"],
     "tenebrismo": [
         "caravaggio",
@@ -22,6 +28,23 @@ STYLE_KEYWORDS = {
 
 
 def classify_style(user_query: str) -> str:
+    """
+    Retorna el estilo más cercano semánticamente al prompt del usuario.
+    """
+    if not model:
+        return "general"
+
+    best_style, _ = classify_style_with_score(user_query)
+    return best_style
+
+
+def classify_style_with_score(user_query: str) -> Tuple[str, float]:
+    """
+    Retorna el estilo más cercano y su score de similitud.
+    """
+    if not model:
+        return "general", 0.0
+
     user_embedding = model.encode(user_query, convert_to_tensor=True)
     best_score = -1.0
     best_style = "general"
@@ -36,4 +59,4 @@ def classify_style(user_query: str) -> str:
             best_score = score
             best_style = style
 
-    return best_style
+    return best_style, best_score

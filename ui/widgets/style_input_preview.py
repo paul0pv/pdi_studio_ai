@@ -1,54 +1,76 @@
-# style_input_preview.py
+# ui/widgets/style_input_preview.py
+
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QLabel,
-    QLineEdit,
-    QPushButton,
     QTextEdit,
+    QPushButton,
+    QMessageBox,
 )
+from PyQt6.QtCore import Qt
 from llm.pipeline_generator import PipelineGenerator
-from processing.semantic_classifier import classify_style
-from processing.filters import FILTER_METADATA
-from ui.widgets.preview_window import PreviewWindow
 from processing.image_processor import ImageProcessor
-from config.preset_meta import tag_preset
+from processing.semantic_classifier import classify_style
 from config.presets import add_preset
+from config.preset_meta import tag_preset
+from ui.widgets.preview_window import PreviewWindow
 
 
 class StyleInputPreview(QWidget):
-    def __init__(self, camera_feed_instance, pipeline_generator: PipelineGenerator):
-        super().__init__()
-        self.camera_feed = camera_feed_instance
-        self.pipeline_generator = pipeline_generator
-        self.setWindowTitle("Generador Inteligente de Filtros")
-        self.setMinimumHeight(400)
+    def __init__(self, camera_feed, pipeline_applier=None, parent=None):
+        super().__init__(parent)
+        self.camera_feed = camera_feed
+        self.pipeline_applier = pipeline_applier
+        self.pipeline_generator = PipelineGenerator()
+        self.pipeline = None
+        self.prompt = ""
 
-        layout = QVBoxLayout()
+        self._build_ui()
 
-        self.style_label = QLabel("Estilo detectado:")
-        self.result_display = QTextEdit()
-        self.result_display.setReadOnly(True)
-
-        layout.addWidget(self.style_label)
-        layout.addWidget(self.result_display)
-
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
         self.setLayout(layout)
 
-        self.apply_button = QPushButton("Aplicar Pipeline a Frame Actual")
-        self.apply_button.setEnabled(False)
+        self.label = QLabel("Describe el estilo de imagen que deseas:")
+        layout.addWidget(self.label)
 
+        self.input_box = QTextEdit()
+        self.input_box.setPlaceholderText(
+            "Ejemplo: Quiero un estilo pop art con colores saturados..."
+        )
+        layout.addWidget(self.input_box)
+
+        self.analyze_button = QPushButton("Generar pipeline con IA")
+        self.analyze_button.clicked.connect(self._analyze_prompt)
+        layout.addWidget(self.analyze_button)
+
+        self.result_display = QTextEdit()
+        self.result_display.setReadOnly(True)
+        layout.addWidget(self.result_display)
+
+        self.apply_button = QPushButton("Aplicar al frame actual")
+        self.apply_button.setEnabled(False)
+        self.apply_button.clicked.connect(self._apply_pipeline_to_frame)
         layout.addWidget(self.apply_button)
 
-        self.apply_button.clicked.connect(self.apply_pipeline_to_frame)
+        self.style_label = QLabel("Estilo detectado: -")
+        self.style_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.style_label)
 
     def _analyze_prompt(self):
+        self.prompt = self.input_box.toPlainText().strip()
         if not self.prompt:
-            self.result_display.setText("⚠️ No se recibió descripción.")
+            self.result_display.setText("⚠️ Por favor ingresa una descripción.")
             return
 
-        detected_style = classify_style(self.prompt)
-        self.style_label.setText(f"Estilo detectado: {detected_style}")
+        try:
+            detected_style = classify_style(self.prompt)
+            self.style_label.setText(f"Estilo detectado: {detected_style}")
+        except Exception as e:
+            self.style_label.setText("❌ Error clasificando estilo.")
+            self.result_display.setText(str(e))
+            return
 
         pipeline = self.pipeline_generator.generate(self.prompt)
         if not pipeline:
@@ -59,59 +81,42 @@ class StyleInputPreview(QWidget):
 
         self.pipeline = pipeline
         self.result_display.setText(json.dumps(pipeline, indent=2, ensure_ascii=False))
-
         self.apply_button.setEnabled(True)
 
-    def set_prompt(self, prompt: str):
-        self.prompt = prompt
-        self._analyze_prompt()
-
-    def apply_pipeline_to_frame(self):
-        if not hasattr(self, "pipeline_generator"):
-            raise RuntimeError("PipelineGenerator no fue inicializado correctamente.")
-
-        prompt = getattr(self, "prompt", "").strip()
-        preset_name = prompt.strip().lower().replace(" ", "_")[:40]
-
-        if not prompt:
-            print("[UI] No hay descripción para generar pipeline.")
+    def _apply_pipeline_to_frame(self):
+        if not self.pipeline or not isinstance(self.pipeline, list):
+            QMessageBox.warning(self, "Error", "Pipeline no válida.")
             return
 
         latest_frame = self.camera_feed.get_latest_frame()
         if latest_frame is None:
-            print("[UI] No se pudo obtener el frame actual.")
-            return
-
-        pipeline = getattr(self, "pipeline", None)
-        if not pipeline:
-            print("[UI] No hay pipeline generada.")
-            return
-
-        if not pipeline:
-            print("[UI] Pipeline no válida.")
+            QMessageBox.warning(self, "Error", "No se pudo obtener el frame actual.")
             return
 
         processor = ImageProcessor()
-        result_frame = processor.apply_custom_pipeline(latest_frame, pipeline)
+        result_frame = processor.apply_custom_pipeline(latest_frame, self.pipeline)
 
-        add_preset(preset_name, pipeline)
-        style = classify_style(prompt)
-        if style:
+        # Guardar como preset
+        preset_name = self.prompt.lower().replace(" ", "_")[:40]
+        add_preset(preset_name, self.pipeline)
+        try:
+            style = classify_style(self.prompt)
             tag_preset(preset_name, style)
+        except:
+            pass
 
-        # Callback para aplicar la pipeline al sistema principal
+        # Callback para aplicar al sistema principal
         def apply_to_main_pipeline():
-            from ui.main_window import MainWindow  # evitar import circular si necesario
+            if self.pipeline_applier:
+                self.pipeline_applier(self.pipeline)
 
-            main_window = self.parentWidget().window()
-            main_window.pipeline_manager.set_pipeline_from_config(pipeline)
-            main_window.image_processor.set_pipeline(pipeline)
-            main_window.show_status_message(
-                "Pipeline del LLM aplicada desde previsualización."
-            )
-
-        # Mostrar ventana emergente con comparación
+        # Mostrar ventana de comparación
         self.preview_window = PreviewWindow(
-            latest_frame, result_frame, on_apply_callback=apply_to_main_pipeline
+            latest_frame,
+            result_frame,
+            on_apply_callback=apply_to_main_pipeline,
+            verbose=True,
+            show_metrics=True,
+            split_view=True,
         )
         self.preview_window.show()

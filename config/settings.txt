@@ -1,0 +1,17 @@
+import json
+import os
+
+CONFIG_PATH = "config/settings.json"
+
+
+def load_settings():
+    if not os.path.exists(CONFIG_PATH):
+        return {"llm_enabled": False, "suppress_llm_prompt": False}
+    with open(CONFIG_PATH, "r") as f:
+        return json.load(f)
+
+
+def create_default_settings():
+    os.makedirs("config", exist_ok=True)
+    with open(CONFIG_PATH, "w") as f:
+        json.dump({"llm_enabled": False, "suppress_llm_prompt": False}, f, indent=4)

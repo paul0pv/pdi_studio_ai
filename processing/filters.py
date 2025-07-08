@@ -20,13 +20,13 @@ def invert_colors(image: np.ndarray) -> np.ndarray:
 
 def apply_gaussian_blur(image: np.ndarray, ksize: int = 5) -> np.ndarray:
     """Applies Gaussian blur to an image. ksize must be odd."""
-    ksize = ksize if ksize % 2 == 1 else ksize + 1  # Ensure ksize is odd
+    # ksize = ksize if ksize % 2 == 1 else ksize + 1  # Ensure ksize is odd
     return cv2.GaussianBlur(image, (ksize, ksize), 0)
 
 
 def apply_median_blur(image: np.ndarray, ksize: int = 5) -> np.ndarray:
     """Applies Median blur to an image. ksize must be odd."""
-    ksize = ksize if ksize % 2 == 1 else ksize + 1  # Ensure ksize is odd
+    # ksize = ksize if ksize % 2 == 1 else ksize + 1  # Ensure ksize is odd
     return cv2.medianBlur(image, ksize)
 
 
@@ -243,47 +243,92 @@ def apply_bokeh_effect(
     return result
 
 
+def equalize_histogram(image: np.ndarray) -> np.ndarray:
+    """Aplica ecualización de histograma para mejorar el contraste."""
+    if len(image.shape) == 2:
+        return cv2.equalizeHist(image)
+    elif image.shape[2] == 3:
+        ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
+        ycrcb[:, :, 0] = cv2.equalizeHist(ycrcb[:, :, 0])
+        return cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
+    return image
+
+
+def apply_sobel_edge_detection(
+    image: np.ndarray, dx: int = 1, dy: int = 0, ksize: int = 3
+) -> np.ndarray:
+    """Aplica el operador Sobel para detección de bordes en X o Y."""
+    if len(image.shape) == 3:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    sobel = cv2.Sobel(image, cv2.CV_64F, dx, dy, ksize=ksize)
+    sobel = np.absolute(sobel)
+    sobel = np.clip(sobel, 0, 255).astype(np.uint8)
+    return cv2.cvtColor(sobel, cv2.COLOR_GRAY2BGR)
+
+
+def apply_lowpass_fft(image: np.ndarray, cutoff: float = 0.1) -> np.ndarray:
+    """Aplica un filtro pasa-bajo en el dominio de la frecuencia."""
+    if len(image.shape) == 3:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    f = np.fft.fft2(image)
+    fshift = np.fft.fftshift(f)
+
+    rows, cols = image.shape
+    crow, ccol = rows // 2, cols // 2
+    mask = np.zeros_like(image, dtype=np.uint8)
+    radius = int(min(rows, cols) * cutoff)
+    cv2.circle(mask, (ccol, crow), radius, 1, -1)
+
+    fshift_filtered = fshift * mask
+    f_ishift = np.fft.ifftshift(fshift_filtered)
+    img_back = np.fft.ifft2(f_ishift)
+    img_back = np.abs(img_back)
+    img_back = np.clip(img_back, 0, 255).astype(np.uint8)
+    return cv2.cvtColor(img_back, cv2.COLOR_GRAY2BGR)
+
+
 # --- Filter Metadata ---
 FILTER_METADATA = {
     "convert_to_grayscale": {
         "function": convert_to_grayscale,
-        "description": "Converts the image to grayscale, removing all color information.",
+        "description": "Convierte la imagen a escala de grises, eliminando toda la información de color.",
         "params": {},
     },
     "invert_colors": {
         "function": invert_colors,
-        "description": "Inverts the colors of the image, creating a negative effect.",
+        "description": "Invierte los colores de la imagen, creando un efecto negativo.",
         "params": {},
     },
     "apply_gaussian_blur": {
         "function": apply_gaussian_blur,
-        "description": "Applies a Gaussian blur to soften the image and reduce noise. 'ksize' controls the blur strength (must be odd).",
+        "description": "Aplica un desenfoque gaussiano para suavizar la imagen y reducir el ruido. 'ksize' controla la intensidad del desenfoque (debe ser impar, si no lo es, tiende al impar superior).",
         "params": {
             "ksize": {
                 "type": "int_slider",
                 "range": (1, 99, 2),  # Odd numbers only
                 "default": 5,
                 "label": "Kernel Size (Odd)",
-#                "must_be_odd": True
+                #                "must_be_odd": True
             }
         },
     },
     "apply_median_blur": {
         "function": apply_median_blur,
-        "description": "Applies a Median blur, effective for removing salt-and-pepper noise. 'ksize' controls the blur strength (must be odd).",
+        "description": "Aplica un desenfoque mediano, eficaz para eliminar el ruido de sal y pimienta. 'ksize' controla la intensidad del desenfoque (debe ser impar, si no lo es, tiende al impar superior).",
         "params": {
             "ksize": {
                 "type": "int_slider",
                 "range": (1, 31, 2),  # Odd numbers only
                 "default": 5,
                 "label": "Kernel Size (Odd)",
-                #"must_be_odd": True
+                # "must_be_odd": True
             }
         },
     },
     "apply_canny_edge_detection": {
         "function": apply_canny_edge_detection,
-        "description": "Detects edges in the image using the Canny algorithm. 'low_threshold' and 'high_threshold' define the sensitivity.",
+        "description": "Detecta los bordes de la imagen utilizando el algoritmo Canny. 'low_threshold'(umbral inferior) y 'high_threshold'(umbral superior) definen la sensibilidad.",
         "params": {
             "low_threshold": {
                 "type": "int_slider",
@@ -301,7 +346,7 @@ FILTER_METADATA = {
     },
     "adjust_brightness_contrast": {
         "function": adjust_brightness_contrast,
-        "description": "Adjusts the brightness and contrast. 'alpha' (contrast) and 'beta' (brightness).",
+        "description": "Ajusta el brillo y el contraste. 'alfa' (contraste) y 'beta' (brillo).",
         "params": {
             "alpha": {
                 "type": "float_slider",
@@ -319,7 +364,7 @@ FILTER_METADATA = {
     },
     "sepia_tint": {
         "function": sepia_tint,
-        "description": "Applies a warm, reddish-brown sepia tone to the image. 'strength' controls the intensity of the effect.",
+        "description": "Aplica un cálido tono sepia marrón rojizo a la imagen. 'strength' controla la intensidad del efecto.",
         "params": {
             "strength": {
                 "type": "float_slider",
@@ -331,7 +376,7 @@ FILTER_METADATA = {
     },
     "apply_laplacian_sharpen": {
         "function": apply_laplacian_sharpen,
-        "description": "Sharpens the image using the Laplacian operator, enhancing details and edges. 'kernel_size' (odd) and 'scale' control the effect.",
+        "description": "Agudiza la imagen utilizando el operador laplaciano, realzando los detalles y los bordes. 'kernel_size' (impar) y 'scale' controlan el efecto.",
         "params": {
             "kernel_size": {
                 "type": "int_slider",
@@ -350,7 +395,7 @@ FILTER_METADATA = {
     },
     "adjust_saturation": {
         "function": adjust_saturation,
-        "description": "Adjusts the color saturation of the image. Factor > 1.0 increases, < 1.0 decreases. 0.0 for grayscale.",
+        "description": "Ajusta la saturación del color de la imagen. El factor > 1.0 aumenta, < 1.0 disminuye. 0.0 para la escala de grises.",
         "params": {
             "factor": {
                 "type": "float_slider",
@@ -381,14 +426,14 @@ FILTER_METADATA = {
                 "range": (1, 15, 2),  # Must be odd
                 "default": 7,
                 "label": "Tamaño Ventana Plantilla",
-                #"must_be_odd": True
+                # "must_be_odd": True
             },
             "search_window_size": {
                 "type": "int_slider",
                 "range": (1, 31, 2),  # Must be odd
                 "default": 21,
                 "label": "Tamaño Ventana Búsqueda",
-                #"must_be_odd": True
+                # "must_be_odd": True
             },
         },
     },
@@ -406,7 +451,7 @@ FILTER_METADATA = {
                 "range": (1, 49, 2),  # Must be odd
                 "default": 15,
                 "label": "Intensidad de Desenfoque",
-                #"must_be_odd": True
+                # "must_be_odd": True
             },
             "center_x": {
                 "type": "float_slider",
@@ -425,6 +470,47 @@ FILTER_METADATA = {
                 "range": (0.01, 0.5, 0.01),
                 "default": 0.2,
                 "label": "Radio (0-1)",
+            },
+        },
+    },
+    "equalize_histogram": {
+        "function": equalize_histogram,
+        "description": "Ecualiza el histograma para mejorar el contraste de la imagen.",
+        "params": {},
+    },
+    "apply_sobel_edge_detection": {
+        "function": apply_sobel_edge_detection,
+        "description": "Detecta bordes usando el operador Sobel. dx/dy definen la dirección.",
+        "params": {
+            "dx": {
+                "type": "int_slider",
+                "range": (0, 1, 1),
+                "default": 1,
+                "label": "Derivada X",
+            },
+            "dy": {
+                "type": "int_slider",
+                "range": (0, 1, 1),
+                "default": 0,
+                "label": "Derivada Y",
+            },
+            "ksize": {
+                "type": "int_slider",
+                "range": (1, 7, 2),
+                "default": 3,
+                "label": "Tamaño Kernel",
+            },
+        },
+    },
+    "apply_lowpass_fft": {
+        "function": apply_lowpass_fft,
+        "description": "Filtra frecuencias altas usando FFT. Mejora suavidad global.",
+        "params": {
+            "cutoff": {
+                "type": "float_slider",
+                "range": (0.01, 0.5, 0.01),
+                "default": 0.1,
+                "label": "Radio de Corte (0-1)",
             },
         },
     },

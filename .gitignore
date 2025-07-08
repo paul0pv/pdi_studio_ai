@@ -76,6 +76,7 @@ htmlcov/           # coverage.py HTML report
 .coverage          # coverage.py data file
 .mypy_cache/       # mypy type checker cache
 .ruff_cache/       # Ruff cache
+deployment/
 
 # Compiled/temporary files from C/C++ extensions (like llama-cpp-python might use)
 *.so               # Shared libraries (Linux)
@@ -87,3 +88,4 @@ htmlcov/           # coverage.py HTML report
 # Any specific build artifacts from llama-cpp-python compilation
 # Depending on how it's built, it might leave artifacts.
 # If you notice other large files being generated, add them here.
+pdi_studio_ai.spec

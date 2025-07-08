@@ -1,359 +1,213 @@
 # ui/widgets/filter_control.py
 
 from PyQt6.QtWidgets import (
-    QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QSlider,
-    QSpinBox,
-    QDoubleSpinBox,
     QCheckBox,
     QPushButton,
+    QSpinBox,
+    QSlider,
+    QDoubleSpinBox,
     QGroupBox,
-    QSizePolicy,
+    QMenu,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QPalette, QColor
 from processing.filters import FILTER_METADATA
+from processing.validation import validate_filter_params
 
 
 class FilterControl(QGroupBox):
-    """
-    A widget to control a single filter's parameters, enable/disable state,
-    and provide options to remove or reorder it within the pipeline.
-    """
-
     params_changed = pyqtSignal(str, dict, int)
     enabled_toggled = pyqtSignal(str, bool, int)
     removed = pyqtSignal(int)
     moved = pyqtSignal(int, str)
+    duplicated = pyqtSignal(int)
 
-    def __init__(self, filter_name: str, initial_params: dict, index: int, parent=None):
-        super().__init__(filter_name.replace("_", " ").title(), parent)
+    def __init__(self, filter_name: str, initial_params: dict, index: int):
+        super().__init__(filter_name)
         self.filter_name = filter_name
-
-        # current_params ONLY holds the filter-specific parameters, not the 'enabled' state
-        self.current_params = {
-            k: v for k, v in initial_params.items() if k != "enabled"
-        }
-
+        self.current_params = initial_params
         self._index = index
-        self.filter_metadata = FILTER_METADATA.get(self.filter_name, {})
+        self.filter_metadata = FILTER_METADATA.get(filter_name, {})
+        self.setStyleSheet("QGroupBox { font-weight: bold; }")
 
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setMinimumHeight(120)
+        self.layout = QVBoxLayout(self)
+        self.setLayout(self.layout)
 
-        self.main_layout = QVBoxLayout(self)
-        self.setLayout(self.main_layout)
-
-        self._build_ui()
-        # Initialize checkbox state based on 'enabled' from initial_params (top-level or default True)
-        initial_enabled_state = initial_params.get("enabled", True)
-        self.enabled_checkbox.setChecked(initial_enabled_state)
-        self._update_ui_from_params()
-
-    def _build_ui(self):
-        """Constructs the UI elements for the filter control."""
-        control_row_layout = QHBoxLayout()
-        self.enabled_checkbox = QCheckBox("Enabled")
-        # Do not set checked state here; it's set in __init__ after current_params is processed.
+        self.enabled_checkbox = QCheckBox("Activado")
+        self.enabled_checkbox.setChecked(True)
         self.enabled_checkbox.stateChanged.connect(self._on_enabled_toggled)
-        control_row_layout.addWidget(self.enabled_checkbox)
+        self.layout.addWidget(self.enabled_checkbox)
 
-        control_row_layout.addStretch(1)
-
-        self.move_up_button = QPushButton("↑")
-        self.move_up_button.setFixedSize(QSize(25, 25))
-        self.move_up_button.clicked.connect(lambda: self.moved.emit(self._index, "up"))
-        control_row_layout.addWidget(self.move_up_button)
-
-        self.move_down_button = QPushButton("↓")
-        self.move_down_button.setFixedSize(QSize(25, 25))
-        self.move_down_button.clicked.connect(
-            lambda: self.moved.emit(self._index, "down")
-        )
-        control_row_layout.addWidget(self.move_down_button)
-
-        self.remove_button = QPushButton("X")
-        self.remove_button.setFixedSize(QSize(25, 25))
-        self.remove_button.clicked.connect(lambda: self.removed.emit(self._index))
-        control_row_layout.addWidget(self.remove_button)
-
-        self.main_layout.addLayout(control_row_layout)
-
-        self.params_layout = QVBoxLayout()
         self.param_widgets = {}
+        self._build_param_controls()
 
-        filter_params_meta = self.filter_metadata.get("params", {})
-        if not filter_params_meta:
-            self.params_layout.addWidget(QLabel("No configurable parameters."))
-        else:
-            for param_name, param_info in filter_params_meta.items():
-                param_control_widget = self._create_param_control(
-                    param_name, param_info
-                )
-                self.params_layout.addWidget(param_control_widget)
-        self.main_layout.addLayout(self.params_layout)
+        # Botones de acción
+        btn_layout = QHBoxLayout()
+        self.remove_btn = QPushButton("Eliminar")
+        self.remove_btn.clicked.connect(lambda: self.removed.emit(self._index))
+        self.up_btn = QPushButton("↑")
+        self.up_btn.clicked.connect(lambda: self.moved.emit(self._index, "up"))
+        self.down_btn = QPushButton("↓")
+        self.down_btn.clicked.connect(lambda: self.moved.emit(self._index, "down"))
+        self.duplicate_btn = QPushButton("Duplicar")
+        self.duplicate_btn.clicked.connect(lambda: self.duplicated.emit(self._index))
 
-        self.main_layout.addStretch(1)
+        btn_layout.addWidget(self.up_btn)
+        btn_layout.addWidget(self.down_btn)
+        btn_layout.addWidget(self.duplicate_btn)
+        btn_layout.addWidget(self.remove_btn)
+        self.layout.addLayout(btn_layout)
 
-    def _create_param_control(self, param_name: str, param_info: dict) -> QWidget:
-        """
-        Creates a control (slider and spinbox) for a single filter parameter.
-        Handles both integer and float parameters.
-        """
-        param_widget = QWidget()
-        param_layout = QHBoxLayout(param_widget)
-        param_layout.setContentsMargins(0, 0, 0, 0)
+    def _build_param_controls(self):
+        def create_spinbox(param_type, min_val, max_val, step, default):
+            if param_type == "float_slider":
+                sb = QDoubleSpinBox()
+                sb.setDecimals(3)
+                sb.setSingleStep(float(step))
+                sb.setValue(float(default))
+            else:
+                sb = QSpinBox()
+                sb.setSingleStep(int(step))
+                sb.setValue(int(default))
+            sb.setMinimum(min_val)
+            sb.setMaximum(max_val)
+            return sb
 
-        param_layout.addWidget(QLabel(param_info.get("label", param_name) + ":"))
+        def highlight_if_invalid(widget, is_valid: bool):
+            palette = widget.palette()
+            if not is_valid:
+                palette.setColor(
+                    QPalette.ColorRole.Base, QColor("#ffcccc")
+                )  # rojo claro
+            else:
+                palette.setColor(QPalette.ColorRole.Base, QColor("white"))
+            widget.setPalette(palette)
 
-        min_val = param_info["range"][0]
-        max_val = param_info["range"][1]
-        step = param_info["range"][2]
-        default_val = param_info["default"]
+        for param_name, param_info in self.filter_metadata.get("params", {}).items():
+            param_type = param_info.get("type", "int_slider")
+            default = self.current_params.get(param_name, param_info.get("default", 0))
+            range_vals = param_info.get("range", (0, 100))
 
-        current_param_value = self.current_params.get(param_name, default_val)
+            if not isinstance(range_vals, (list, tuple)) or len(range_vals) < 2:
+                print(f"[⚠️] Rango inválido para parámetro: {range_vals}")
+                range_vals = (0, 100)
 
-        spinbox = None
-        slider = None
+            min_val = range_vals[0]
+            max_val = range_vals[1]
+            step = range_vals[2] if len(range_vals) > 2 else 1
+            must_be_odd = param_info.get("must_be_odd", False)
 
-        #must_be_odd = param_info.get("must_be_odd", False)
+            row = QHBoxLayout()
+            label = QLabel(param_info.get("label", param_name))
+            label.setToolTip(param_info.get("description", ""))
+            row.addWidget(label)
 
-#        if must_be_odd:
-#            def enforce_odd(val):
-#                return val if val % 2 == 1 else val + 1
-#
-#            slider.valueChanged.connect(
-#                lambda val, sbox=spinbox: sbox.setValue(enforce_odd(val))
-#            )
-#            spinbox.valueChanged.connect(
-#                lambda val, sld=slider: sld.setValue(enforce_odd(val))
-#            )
+            if param_type in ("int_slider", "float_slider"):
+                scale = int(1 / step) if param_type == "float_slider" else 1
 
-        if param_info["type"] == "int_slider":
-            spinbox = QSpinBox()
-            spinbox.setRange(int(min_val), int(max_val))
-            spinbox.setSingleStep(int(step))
-            spinbox.setValue(int(current_param_value))
+                slider = QSlider(Qt.Orientation.Horizontal)
+                slider.setMinimum(int(min_val * scale))
+                slider.setMaximum(int(max_val * scale))
+                slider.setSingleStep(1)
+                slider.setValue(int(default * scale))
 
-            slider = QSlider(Qt.Orientation.Horizontal)
-            slider.setRange(int(min_val), int(max_val))
-            slider.setSingleStep(int(step))
-            slider.setValue(int(current_param_value))
+                spinbox = create_spinbox(param_type, min_val, max_val, step, default)
+                spinbox.setToolTip(param_info.get("description", ""))
 
-            slider.valueChanged.connect(spinbox.setValue)
-            spinbox.valueChanged.connect(slider.setValue)
-
-        elif param_info["type"] == "float_slider":
-            spinbox = QDoubleSpinBox()
-            spinbox.setRange(min_val, max_val)
-            spinbox.setSingleStep(step)
-            spinbox.setDecimals(2)
-            spinbox.setValue(current_param_value)
-
-            slider = QSlider(Qt.Orientation.Horizontal)
-            slider_max_val = int((max_val - min_val) / step)
-            slider.setRange(0, slider_max_val)
-            slider.setSingleStep(1)
-            slider.setValue(int((current_param_value - min_val) / step))
-
-            slider.valueChanged.connect(
-                lambda val, sbox=spinbox, mv=min_val, st=step: sbox.setValue(
-                    mv + val * st
-                )
-            )
-            spinbox.valueChanged.connect(
-                lambda val, sld=slider, mv=min_val, st=step: sld.setValue(
-                    int((val - mv) / st)
-                )
-            )
-
-        if spinbox and slider:
-            param_layout.addWidget(spinbox)
-            param_layout.addWidget(slider)
-            self.param_widgets[param_name] = {"spinbox": spinbox, "slider": slider}
-
-            if param_info["type"] == "int_slider":
+                # Sincronización
+                if param_type == "float_slider":
+                    slider.valueChanged.connect(
+                        lambda val, sb=spinbox, sc=scale: sb.setValue(float(val) / sc)
+                    )
+                else:
+                    slider.valueChanged.connect(
+                        lambda val, sb=spinbox, sc=scale: sb.setValue(int(val / sc))
+                    )
                 spinbox.valueChanged.connect(
-                    lambda val, p_name=param_name: self._on_param_changed(p_name, val)
-                )
-            elif param_info["type"] == "float_slider":
-                spinbox.valueChanged.connect(
-                    lambda val, p_name=param_name: self._on_param_changed(p_name, val)
+                    lambda val, sl=slider, sc=scale: sl.setValue(int(val * sc))
                 )
 
-        return param_widget
+                def on_change(val, p=param_name, sb=spinbox):
+                    val = float(val) if param_type == "float_slider" else int(val)
+                    if must_be_odd and isinstance(val, int) and val % 2 == 0:
+                        val += 1
+                        slider.setValue(val * scale)
+                        spinbox.setValue(val)
+                    highlight_if_invalid(sb, min_val <= val <= max_val)
+                    self._on_param_changed(p, val)
+
+                slider.valueChanged.connect(lambda val: on_change(val / scale))
+                spinbox.valueChanged.connect(on_change)
+
+                row.addWidget(slider)
+                row.addWidget(spinbox)
+                self.param_widgets[param_name] = (slider, spinbox)
+            self.layout.addLayout(row)
 
     def _on_param_changed(self, param_name: str, value):
-        """Updates the current_params and emits the signal when a parameter changes."""
-#        param_info = self.filter_metadata["params"].get(param_name, {})
-#        min_val, max_val = param_info.get("range", (None, None))
-#        if min_val is not None and max_val is not None:
-#            value = max(min_val, min(value, max_val))
-#
-#        if param_info.get("must_be_odd", False):
-#            value = value if value % 2 == 1 else value + 1
-        
+        param_info = self.filter_metadata["params"].get(param_name, {})
+        range_vals = param_info.get("range", (0, 100))
+
+        if not isinstance(range_vals, (list, tuple)) or len(range_vals) < 2:
+            print(f"[⚠️] Rango inválido para '{param_name}': {range_vals}")
+            range_vals = (0, 100)
+
+        min_val = range_vals[0]
+        max_val = range_vals[1]
+        step = range_vals[2] if len(range_vals) > 2 else 1
+        must_be_odd = param_info.get("must_be_odd", False)
+
+        # Clamping
+        try:
+            value = float(value)
+            if value < min_val:
+                value = min_val
+            elif value > max_val:
+                value = max_val
+        except Exception as e:
+            print(f"[❌] Error al validar valor de '{param_name}': {e}")
+            return
+
+        # Redondear al múltiplo más cercano del paso
+        if isinstance(value, float) and step > 0:
+            value = round(round((value - min_val) / step) * step + min_val, 6)
+
+        # Forzar impar si aplica
+        if must_be_odd:
+            value = int(round(value))
+            if value % 2 == 0:
+                value += 1
+
+        # Evitar emitir si no hay cambio real
+        if self.current_params.get(param_name) == value:
+            return
+
         self.current_params[param_name] = value
-        # Emit signal with current filter name, updated parameters, and its index
-        # The 'enabled' state is NOT part of current_params here, but will be added by get_filter_config
         self.params_changed.emit(self.filter_name, self.current_params, self._index)
 
-    def _on_enabled_toggled(self, state: int):
-        """Updates the enabled state and emits the signal."""
-        is_enabled = bool(state)
-        # Emit signal with current filter name, new enabled state, and its index
-        self.enabled_toggled.emit(self.filter_name, is_enabled, self._index)
-        # Enable/disable parameter controls
-        for param_widgets in self.param_widgets.values():
-            if "spinbox" in param_widgets:
-                param_widgets["spinbox"].setEnabled(is_enabled)
-            if "slider" in param_widgets:
-                param_widgets["slider"].setEnabled(is_enabled)
-
-    def _update_ui_from_params(self):
-        """Updates the UI elements (checkbox, spinboxes, sliders) based on current_params."""
-        is_enabled = (
-            self.enabled_checkbox.isChecked()
-        )  # Read current UI state for controls
-
-        filter_params_meta = self.filter_metadata.get("params", {})
-        for param_name, param_info in filter_params_meta.items():
-            if param_name in self.param_widgets:
-                spinbox = self.param_widgets[param_name]["spinbox"]
-                slider = self.param_widgets[param_name]["slider"]
-
-                spinbox.setEnabled(is_enabled)
-                slider.setEnabled(is_enabled)
-
-                current_value = self.current_params.get(
-                    param_name, param_info["default"]
-                )
-
-                #if current_value < param_info["range"][0] or current_value > param_info["range"][1]:
-                #    current_value = param_info["default"]
-
-                if param_info["type"] == "int_slider":
-                    spinbox.setValue(int(current_value))
-                    slider.setValue(int(current_value))
-                elif param_info["type"] == "float_slider":
-                    spinbox.setValue(current_value)
-                    min_val = param_info["range"][0]
-                    step = param_info["range"][2]
-                    slider.setValue(int((current_value - min_val) / step))
-
-    def set_index(self, index: int):
-        """Updates the internal index of the filter control."""
-        self._index = index
+    def _on_enabled_toggled(self, state):
+        self.enabled_toggled.emit(
+            self.filter_name, state == Qt.CheckState.Checked, self._index
+        )
 
     def get_filter_config(self) -> dict:
-        """
-        Returns the current configuration of this filter,
-        with 'enabled' at the top level, and parameters in 'params'.
-        """
-        is_enabled = self.enabled_checkbox.isChecked()
-
-        # current_params already holds only the filter-specific parameters
-        # no need to remove 'enabled' from it here.
         return {
             "name": self.filter_name,
             "params": self.current_params,
-            "enabled": is_enabled,
+            "enabled": self.enabled_checkbox.isChecked(),
         }
 
-    # --- For standalone testing (optional) ---
+    def set_index(self, new_index: int):
+        self._index = new_index
 
-
-if __name__ == "__main__":
-    import sys
-    from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
-
-    app = QApplication(sys.argv)
-    window = QMainWindow()
-    window.setWindowTitle("FilterControl Test")
-
-    test_grayscale_config = {
-        "name": "convert_to_grayscale",
-        "params": {},  # No params here, enabled will be top-level
-        "enabled": True,
-    }
-    test_brightness_contrast_config = {
-        "name": "adjust_brightness_contrast",
-        "params": {"alpha": 1.5, "beta": 50},
-        "enabled": True,
-    }
-    test_sepia_config = {
-        "name": "sepia_tint",
-        "params": {"strength": 0.7},
-        "enabled": True,
-    }
-    test_canny_config = {
-        "name": "apply_canny_edge_detection",
-        "params": {"low_threshold": 80, "high_threshold": 200},
-        "enabled": True,
-    }
-
-    central_widget = QWidget()
-    main_layout = QVBoxLayout(central_widget)
-
-    filter1 = FilterControl(
-        test_brightness_contrast_config["name"],
-        test_brightness_contrast_config["params"],
-        0,
-    )
-    # The __init__ now takes care of setting initial checkbox state.
-    # filter1.enabled_checkbox.setChecked(test_brightness_contrast_config["enabled"])
-    filter1.params_changed.connect(
-        lambda n, p, i: print(f"Filter1 Params Changed: {n}, {p}, Index: {i}")
-    )
-    filter1.enabled_toggled.connect(
-        lambda n, e, i: print(f"Filter1 Enabled Toggled: {n}, {e}, Index: {i}")
-    )
-    filter1.removed.connect(lambda i: print(f"Filter1 Removed at Index: {i}"))
-    filter1.moved.connect(lambda i, d: print(f"Filter1 Moved: {i}, {d}"))
-    main_layout.addWidget(filter1)
-
-    filter2 = FilterControl(test_sepia_config["name"], test_sepia_config["params"], 1)
-    # filter2.enabled_checkbox.setChecked(test_sepia_config["enabled"])
-    filter2.params_changed.connect(
-        lambda n, p, i: print(f"Filter2 Params Changed: {n}, {p}, Index: {i}")
-    )
-    filter2.enabled_toggled.connect(
-        lambda n, e, i: print(f"Filter2 Enabled Toggled: {n}, {e}, Index: {i}")
-    )
-    filter2.removed.connect(lambda i: print(f"Filter2 Removed at Index: {i}"))
-    filter2.moved.connect(lambda i, d: print(f"Filter2 Moved: {i}, {d}"))
-    main_layout.addWidget(filter2)
-
-    filter3 = FilterControl(test_canny_config["name"], test_canny_config["params"], 2)
-    # filter3.enabled_checkbox.setChecked(test_canny_config["enabled"])
-    filter3.params_changed.connect(
-        lambda n, p, i: print(f"Filter3 Params Changed: {n}, {p}, Index: {i}")
-    )
-    filter3.enabled_toggled.connect(
-        lambda n, e, i: print(f"Filter3 Enabled Toggled: {n}, {e}, Index: {i}")
-    )
-    filter3.removed.connect(lambda i: print(f"Filter3 Removed at Index: {i}"))
-    filter3.moved.connect(lambda i, d: print(f"Filter3 Moved: {i}, {d}"))
-    main_layout.addWidget(filter3)
-
-    filter4 = FilterControl(
-        test_grayscale_config["name"], test_grayscale_config["params"], 3
-    )
-    # filter4.enabled_checkbox.setChecked(test_grayscale_config["enabled"])
-    filter4.params_changed.connect(
-        lambda n, p, i: print(f"Filter4 Params Changed: {n}, {p}, Index: {i}")
-    )
-    filter4.enabled_toggled.connect(
-        lambda n, e, i: print(f"Filter4 Enabled Toggled: {n}, {e}, Index: {i}")
-    )
-    filter4.removed.connect(lambda i: print(f"Filter4 Removed at Index: {i}"))
-    filter4.moved.connect(lambda i, d: print(f"Filter4 Moved: {i}, {d}"))
-    main_layout.addWidget(filter4)
-
-    main_layout.addStretch(1)
-
-    window.setCentralWidget(central_widget)
-    window.show()
-    sys.exit(app.exec())
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        menu.addAction("Duplicar", lambda: self.duplicated.emit(self._index))
+        menu.addAction("Eliminar", lambda: self.removed.emit(self._index))
+        menu.addAction("Mover arriba", lambda: self.moved.emit(self._index, "up"))
+        menu.addAction("Mover abajo", lambda: self.moved.emit(self._index, "down"))
+        menu.addAction("Activar/Desactivar", lambda: self.enabled_checkbox.toggle())
+        menu.exec(event.globalPos())
